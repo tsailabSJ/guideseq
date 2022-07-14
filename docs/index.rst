@@ -22,7 +22,7 @@ Steps
 
 The package implements a pipeline consisting of a read preprocessing module followed by an off-target identification module. The preprocessing module takes raw reads (FASTQ) from a pooled multi-sample sequencing run as input. Reads are demultiplexed into sample-specific FASTQs and PCR duplicates are removed using unique molecular index (UMI) barcode information.
 
-![guideseq_flowchart](guideseq_flowchart.png)
+.. image:: ../guideseq_flowchart.png
 
 The individual pipeline steps are:
 
@@ -34,6 +34,7 @@ The individual pipeline steps are:
 6. **Reporting**: Identified off-targets, sorted by GUIDE-Seq read count are annotated in a final output table. The GUIDE-Seq read count is expected to scale approximately linearly with cleavage rates (Tsai et al., *Nat Biotechnol.* 2015).
 7. **Visualization**: Alignment of detected off-target sites is visualized via a color-coded sequence grid, as seen below:
 
+.. image:: ../EMX1_visualization.png
 
 Installation
 ^^^^^^^^^^^^^^
@@ -41,36 +42,35 @@ Installation
 
 The most easiest way to install guideseq pipeline is via conda.
 
-```
+::
 
-conda create -n guideseq -c conda-forge -c bioconda -c anaconda -c tsailabSJ guide_seq
+	conda create -n guideseq -c conda-forge -c bioconda -c anaconda -c tsailabSJ guide_seq
 
-source activate guideseq
+	source activate guideseq
 
-guideseq.py -h
+	guideseq.py -h
 
-## BWA and bedtools are automatically installed
+	## BWA and bedtools are automatically installed
 
 
-```
 
 Alternatively, you can git clone this repository and install
 
-```
+::
 
-git clone https://github.com/tsailabSJ/guideseq
+	git clone https://github.com/tsailabSJ/guideseq
 
-cd guideseq
+	cd guideseq
 
-pip install -r requirements.txt
+	pip install -r requirements.txt
 
-python setup.py install
+	python setup.py install
 
-guideseq.py -h
+	guideseq.py -h
 
-## Please install BWA and bedtools if you choose this option
+	## Please install BWA and bedtools if you choose this option
 
-```
+
 
 - **Burrows-Wheeler Aligner (bwa)**: You can either install bwa with a package manager (e.g. `brew` on OSX or `apt-get` on Ubuntu/Debian), or you can download it from the [project page](http://bio-bwa.sourceforge.net/) and compile it from source.
 - **Bedtools**: You can either install bwa with a package manager (e.g. `brew` or `apt-get`), or you can download it from the [project page](http://bedtools.readthedocs.org/en/latest/content/installation.html) and compile it from source.
@@ -81,8 +81,9 @@ Input
 ^^^^^^^
 
 
+Writing A Manifest File
+--------------
 
-### Writing A Manifest File<a name="write_manifest"></a>
 When running the end-to-end analysis functionality of the guideseq package, a number of inputs are required. To simplify the formatting of these inputs and to encourage reproducibility, these parameters are inputted into the pipeline via a manifest formatted as a YAML file. YAML files allow easy-to-read specification of key-value pairs. This allows us to easily specify our parameters. The following fields are required in the manifest:
 
 - `reference_genome`: The absolute path to the reference genome FASTA file.
@@ -98,13 +99,14 @@ When running the end-to-end analysis functionality of the guideseq package, a nu
 
 An example `undemultiplexed` field:
 
-```
-undemultiplexed:
-    forward: ../test/data/undemux.r1.fastq.gz
-    reverse: ../test/data/undemux.r2.fastq.gz
-    index1: ../test/data/undemux.i1.fastq.gz
-    index2: ../test/data/undemux.i2.fastq.gz
-```
+::
+
+	undemultiplexed:
+					forward: ../test/data/undemux.r1.fastq.gz
+					reverse: ../test/data/undemux.r2.fastq.gz
+					index1: ../test/data/undemux.i1.fastq.gz
+					index2: ../test/data/undemux.i2.fastq.gz
+
 
 - `samples`: A nested field containing the details of each sample. At least two samples must be specified: a "control" sample (to be used to filter out background off-target sites) and at least one treatment sample. The required parameters are:
 	- `target`: The sample targetsites
@@ -114,54 +116,55 @@ undemultiplexed:
 
 An example `samples` field:
 
-```
-samples:
-    control:
-        target:
-        barcode1: CTCTCTAC
-        barcode2: CTCTCTAT
-        description: Control
+::
 
-    [SAMPLENAME]:
-        target: GAGTCCGAGCAGAAGAAGAANGG
-        barcode1: TAGGCATG
-        barcode2: TAGATCGC
-        description: EMX1
-```
+	samples:
+					control:
+									target:
+									barcode1: CTCTCTAC
+									barcode2: CTCTCTAT
+									description: Control
+
+					[SAMPLENAME]:
+									target: GAGTCCGAGCAGAAGAAGAANGG
+									barcode1: TAGGCATG
+									barcode2: TAGATCGC
+									description: EMX1
+
 
 ### A Full Manifest File Example<a name="manifest_example"></a>
 
 Below is an example of a full manifest file. Feel free to copy it and replace the parameters with your own experiment data. Remember that you can input more than just one treatment sample (e.g. the "EMX1" data below).
 
-```
-reference_genome: test/test_genome.fa
-output_folder: test/output
+::
 
-bwa: bwa
-bedtools: bedtools
-PAM: NGG
-demultiplex_min_reads: 1000
+	reference_genome: test/test_genome.fa
+	output_folder: test/output
 
-undemultiplexed:
-    forward: test/data/undemultiplexed/undemux.r1.fastq.gz
-    reverse: test/data/undemultiplexed/undemux.r2.fastq.gz
-    index1: test/data/undemultiplexed/undemux.i1.fastq.gz
-    index2: test/data/undemultiplexed/undemux.i2.fastq.gz
+	bwa: bwa
+	bedtools: bedtools
+	PAM: NGG
+	demultiplex_min_reads: 1000
 
-samples:
-    control:
-        target:  
-        barcode1: CTCTCTAC
-        barcode2: CTCTCTAT
-        description: Control
+	undemultiplexed:
+					forward: test/data/undemultiplexed/undemux.r1.fastq.gz
+					reverse: test/data/undemultiplexed/undemux.r2.fastq.gz
+					index1: test/data/undemultiplexed/undemux.i1.fastq.gz
+					index2: test/data/undemultiplexed/undemux.i2.fastq.gz
 
-    EMX1:
-        target: GAGTCCGAGCAGAAGAAGAANGG
-        barcode1: TAGGCATG
-        barcode2: TAGATCGC
-        description: EMX_site1
+	samples:
+					control:
+									target:  
+									barcode1: CTCTCTAC
+									barcode2: CTCTCTAT
+									description: Control
 
-```
+					EMX1:
+									target: GAGTCCGAGCAGAAGAAGAANGG
+									barcode1: TAGGCATG
+									barcode2: TAGATCGC
+									description: EMX_site1
+
 
 
 
@@ -172,7 +175,10 @@ Output
 When running the full pipeline, the results of each step are outputted to the `output_folder` in a separate folder for each step. The output folders and their respective contents are as follows:
 
 
-#### Output Folders
+Output Folders
+--------------
+
+
 - `output_folder/demultiplexed`: Contains the four undemultiplexed reads files (forward, reverse, index1, index2) for each sample.
 - `output_folder/umitagged`: Contains the two umitgged reads files (forward, reverse) for each sample.
 - `output_folder/consolidated`: Contains the two consolidated reads files (forward, reverse) for each sample.
@@ -184,7 +190,8 @@ When running the full pipeline, the results of each step are outputted to the `o
 
 The final detected off-target sites are placed in the `output_folder/identified` folder, with one `.txt` file for each sample specified in the manifest. The fields that are populated in each row of these off-target files are specified below:
 
-####Output Off-Targets `.txt` Fields:
+Output Off-Targets `.txt` Fields
+---------------------
 
 - `BED Chromosome`: Window chromosome
 - `BED Min.Position`: Window 0-based start position
@@ -222,7 +229,8 @@ The final detected off-target sites are placed in the `output_folder/identified`
 
 The key fields for interpreting this output and identifying off-target sites are: `BED off-target Chromosome`, `BED off-target start`, `BED off-target end`, `BED off-target name`, `BED off-target strand`, `Off-Target Sequence`, `bi.sum.mi`
 
-#### Output Visualizations
+Output Visualizations
+------------------
 
 The outputted visualizations are in the `.svg` vector format, which is an open image standard that can be viewed in any modern web browser (e.g. Google Chrome, Apple Safari, Mozilla Firefox), and can be viewed and edited in any vector editing application (e.g. Adobe Illustrator). Because the output visualizations are vector images, they can be scaled up or down infinitely without a loss in quality, and can also be edited as shapes with ease. This makes the images produced by the guideseq package ideal for posters, presentations, and papers.
 
@@ -230,37 +238,37 @@ The outputted visualizations are in the `.svg` vector format, which is an open i
 Usage
 ^^^^^^
 
-```
+:: 
 
-git clone https://github.com/tsailabSJ/guideseq
+	git clone https://github.com/tsailabSJ/guideseq
 
-cd guideseq/test
+	cd guideseq/test
 
-guideseq.py all -m test_manifest.yaml
+	guideseq.py all -m test_manifest.yaml
 
-```
 
-## Running the Full Analysis Pipeline<a name="full_pipeline"></a>
 
-### Quickstart<a name="quickstart"></a>
+Running the Full Analysis Pipeline
+---------------
 
 To run the full guideseq analysis pipeline, you must first create a manifest YAML file that describes all pipeline inputs. Once you have done so, you can simply run
 
-```
-guideseq.py all -m /path/to/manifest.yaml
-```
+::
+
+	guideseq.py all -m /path/to/manifest.yaml
+
 
 to run the entire pipeline. Below are specific instructions detailing how to write the manifest file.
 
 If you wish to run an example on our abridged test data, you can simply run
 
-```
+::
 
-cd guideseq/test
+	cd guideseq/test
+
+	guideseq.py all -m test_manifest.yaml
 
 
-guideseq.py all -m test_manifest.yaml
-```
 from the guideseq root directory. The `test_manifest` assumes that both the `bwa` and `bedtools`executables are in your system PATH. You will see the pipeline results outputted to the `test/output` folder.
 
 

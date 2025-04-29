@@ -1,68 +1,65 @@
-reference_genome: /rgs01/project_space/tsaigrp/Genomics/common/genomes/hg38/hg38_chroms_only.fa
-blacklist: /rgs01/project_space/tsaigrp/Genomics/common/genomes/hg38/hg38-blacklist.v2.bed.gz
-# if not specified, default is NGG
-PAM: NGG
-
 # output folder directory (absolute or relative path), if not specified, default is current dir
 analysis_folder: /rgs01/project_space/tsaigrp/Genomics/common/projects/CHANGE_seq/CHANGE_seq_05022021/test/
 
+reference_genome: /research_jude/rgs01_jude/groups/tsaigrp/projects/Genomics/common/genomes/hg38/hg38_chroms_only.fa
+chrom_size: /research_jude/rgs01_jude/groups/tsaigrp/projects/Genomics/common/genomes/hg38/hg38_chroms_only.chrom.sizes.bed
+
+
+# If homer not installed, use genome: None
+genome: hg38
+# if not specified, default is NGG
+PAM: NGG
 
 # PATH to analysis tools
 # If not specified, default is just the tool name, i.e., accessible in the $PATH
 bwa: bwa
 samtools: samtools
-trim_galore: trim_galore
 cutadapt: cutadapt
+splitFastq: splitFastq
 bedtools: bedtools
-Rscript: /home/yli11/.conda/envs/captureC/bin/Rscript
-# guideseq
+umi_tools: umi_tools
 
-window_size: 25
-max_score: 7
-on_target_reference_sequence: GTCCCTAGTGGCCCCACTGTAGG
-# consolidation
-
-CONSOLIDATE_MIN_QUAL: 15
-CONSOLIDATE_MIN_FREQ: 0.9
-
-# parallel
-njobs: 6
-
-
-# read filter
+# read alignment filter
 mapq_threshold: 50
 
+# HPC LSF parallel
+njobs: 10 # if parallel, then subsample_reads will be force to -1
+memory: 10000
+guideseq_pool: TRUE
 
-# dsODN_primer
-i7+: ATACCGTTATTAACATATGACA
-i7-: GTTTAATTGAGTTGTCATATGTTAATAAC
-dsODN_primer: GTTTAATTGAGTTGTCATATGTTAATAACGGTAT # primer sequence that matches i7- 
-dsODN_primer_revcomp: ATACCGTTATTAACATATGACAACTCAATTAAAC # primer sequence that matches i7+ 
-control_primer: AGATGCCTTTGGGGATACTCC
+# identify off-target parameters
+extend_spacer: 17
+extend_pam: 6
+extend_flank: 10
+window_size: 25
+max_score: 7
+min_guideseq_read_count: 1 # keep it as 1
+max_control_read_count: 20
 
-# primer sequence matching
-# example, <= match_distance is a match
-# >= mispriming_distance is a mispriming
-# all distance here is edit distance
-i7+_match_distance: 2
-i7-_match_distance: 3
-control_primer_match_distance: 2
-i7+_mispriming_distance: 3
-i7-_mispriming_distance: 2
-i7+_mispriming_length: 12
-i7-_mispriming_length: 5
+# out_dir, input_dir are relative path to analysis_folder
+
+# DEMULTIPLEX 
+# ------------
+demultiplex:
+    min_reads: 10000
+    mismatch: 1
+    forward: Undetermined_S0_R1_001.fastq.gz
+    reverse: Undetermined_S0_R2_001.fastq.gz
+    index1: Undetermined_S0_I1_001.fastq.gz
+    index2: Undetermined_S0_I2_001.fastq.gz
+    out_dir: demultiplexed # relative to analysis_folder
+    input_dir: ./ # relative to analysis_folder
+    subsample_reads: -1 # user might want to subsample reads to the same depth
 
 samples:
-    AAVS1_site_2_d3:
+    AAVS1_site_2_d30_rep1:
         target: GTCCCTAGTGGCCCCACTGTNGG
-        read1: CRL2619_S9_R1_100.fastq.gz
-        read2: CRL2619_S9_R2_100.fastq.gz
-        index1: CRL2619_S9_I1_100.fastq.gz
-        index2: CRL2619_S9_I2_100.fastq.gz
-        controlread1: CRL2613_S3_R1_100.fastq.gz
-        controlread2: CRL2613_S3_R2_100.fastq.gz
-        controlindex1: CRL2613_S3_I1_100.fastq.gz
-        controlindex2: CRL2613_S3_I2_100.fastq.gz
-        description:  AAVS1_site_2_d3
+        barcode1: ATTCCGCT
+        barcode2: TAGATCGC
+        controlbarcode1: ATTCCGCT
+        controlbarcode2: AAGGAGTA
+        description:  AAVS1_site_2_d30_rep1
+
+
 
 

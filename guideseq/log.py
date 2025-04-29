@@ -8,6 +8,8 @@ Adapted from the accepted answer here: http://stackoverflow.com/questions/762189
 """
 
 import logging
+import datetime
+myDate=str(datetime.date.today())
 
 
 def createCustomLogger(name,file):
@@ -15,7 +17,7 @@ def createCustomLogger(name,file):
 
     handler = logging.StreamHandler()
     handler.setFormatter(formatter)
-    fileHandler = logging.FileHandler("{0}.log".format(file))
+    fileHandler = logging.FileHandler("{0}.{1}.log".format(file,myDate))
     fileHandler.setFormatter(formatter)
     logger = logging.getLogger(name)
     logger.setLevel(logging.DEBUG)

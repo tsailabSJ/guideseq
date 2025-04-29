@@ -6,6 +6,9 @@ import logging
 import argparse
 import pandas as pd
 import subprocess
+import swifter
+import numpy as np
+from joblib import Parallel, delayed
 
 logger = logging.getLogger('root')
 logger.propagate = False
@@ -20,7 +23,7 @@ for c in ['Y','S','W','K','M','B','D','H','V','.']:
 	colors[c] = "#B3B3B3"
 def refseqID_to_HGNC_symbol(x,myDict):
 	if "(" in x:
-		ID = x.split()[1].split(",")[0].replace(")","").replace("(","")
+		ID = x.split("(")[1].split(",")[0].replace(")","").replace("(","")
 		# print (ID)
 		if ID in myDict:
 			gene = myDict[ID]
@@ -33,21 +36,30 @@ def reformat_homer_annotation(r):
 		return "%s (%s)"%(r.Annotation,r['Gene Name'])
 	return r.Annotation
 def parse_homer(identified,homer_output,genome,refseq_names=None):
+	# print (refseq_names)
+	out = identified.replace(".tsv",".annot.tsv")
+	try:
+		df = pd.read_csv(identified,sep="\t")
+	except:
+		return out
 	select_col="Annotation"
-	command = "annotatePeaks.pl %s %s > %s"%(identified,genome,homer_output)
+	tmp = df[['#chr','start','end','site_name']]
+	outFile = f"{identified}.homer.input"
+	tmp.to_csv(outFile,sep="\t",header=False,index=False)
+	command = "annotatePeaks.pl %s %s > %s"%(outFile,genome,homer_output)
 	os.system(command)
-	# print (identified)
-	# print (homer_output)
-	df = pd.read_csv(identified,sep="\t")
-	df.index = df['BED_Name'].to_list()
+
+	df.index = df['site_name'].to_list()
+	
 	df2 = pd.read_csv(homer_output,sep="\t",index_col=0)
-	df2[select_col] = df2.apply(reformat_homer_annotation,axis=1)
+	df2[select_col] = df2.swifter.progress_bar(False).apply(reformat_homer_annotation,axis=1)
 	df['Annotation'] = df2[select_col]
-	# print (df.head())
+	df['Annotation'] = df['Annotation'].fillna("NA")
+	
 	if refseq_names!=None:
 		myDict = parse_HGNC(refseq_names)
 		df['Annotation'] = [refseqID_to_HGNC_symbol(x,myDict) for x in df.Annotation]
-	out = identified.replace(".txt",".annot.tsv")
+	
 	df.to_csv(out,sep="\t",index=False)
 	return out
 
@@ -68,76 +80,85 @@ def parse_HGNC(f):
 	df.index = df[refseq].to_list()
 	# print (df.head())
 	return df[symbol].to_dict()
+def get_alignment_info(r):
+	if len(r.target_aligned)==len(r.on_target_sequence):
+		r['seq'] = r.target_aligned
+		r['bulged_seq'] = ""
+		r['target_seq'] = r.on_target_sequence
+		r['realigned_target_seq'] = ""
+	elif len(r.target_aligned)>len(r.on_target_sequence): # bulge
+		r['seq'] = ""
+		r['bulged_seq'] = r.target_aligned
+		r['target_seq'] = r.on_target_sequence
+		r['realigned_target_seq'] = r.query_aligned
+	else: # deletion
+		r['seq'] = r.target_aligned
+		r['bulged_seq'] = ""
+		r['target_seq'] = r.query_aligned
+		r['realigned_target_seq'] = ""
+	return r
 def parseSitesFile(infile):
-	offtargets = []
-	total_seq = 0
-	with open(infile, 'r') as f:
-		f.readline()
-		for line in f:
-			line = line.rstrip('\n')
-			line_items = line.split('\t')
-			offtarget_reads = int(line_items[11].strip())
-			control_primer = float(line_items[44].strip())
-			no_bulge_offtarget_sequence = line_items[26]
-			bulge_offtarget_sequence = line_items[31]
-			target_seq = line_items[42]
-			realigned_target_seq = line_items[43]
-			# print (offtarget_reads,control_primer)
-			
-			
-			try:
-				annot = line_items[47]
-			except:
-				annot = ""
-			if no_bulge_offtarget_sequence != '' or bulge_offtarget_sequence != '':
-			# 26	Site_SubstitutionsOnly.Sequence
-			# 27	Site_SubstitutionsOnly.NumSubstitutions
-			# 28	Site_SubstitutionsOnly.Strand
-			# 29	Site_SubstitutionsOnly.Start
-			# 30	Site_SubstitutionsOnly.End
-			# 31	Site_GapsAllowed.Sequence
-			# 32	Site_GapsAllowed.Length
-			# 33	Site_GapsAllowed.Score
-			# 34	Site_GapsAllowed.Substitutions
-			# 35	Site_GapsAllowed.Insertions
-			# 36	Site_GapsAllowed.Deletions
-			# 37	Site_GapsAllowed.Strand
-			# 38	Site_GapsAllowed.Start
-			# 39	Site_GapsAllowed.End
+	"""rewrite to use pandas df"""
+	df = pd.read_csv(infile,sep="\t")
+	df = df.sort_values("total_guideseq_reads",ascending=False)
+	df['coord'] = df['#chr']+":"+df.start.astype(str)+"-"+df.end.astype(str)
+	df = df.swifter.progress_bar(False).apply(get_alignment_info,axis=1)
+	# df['seq'] = df['target_aligned']
+	# df['bulged_seq'] = df['Site_GapsAllowed.site_sequence'].fillna("")
+	# df['target_seq'] = df['on_target_sequence']
+	# df['realigned_target_seq'] = df['Site_GapsAllowed.on_target_sequence'].replace("none","")
+	df['reads'] = df['total_guideseq_reads'].astype(str)
+	df['num_mismatch'] = df['editDistance'].astype(int).astype(str)
+	try:
+		df['annot'] = df['Annotation']
+	except:
+		df['annot'] = ""
+	try:
+		df['Title'] = df['Title']
+	except:
+		df['Title'] = ""
+	try:
+		df['outfile'] = df['outfile']
+	except:
+		df['outfile'] = ""
 
-				if bulge_offtarget_sequence:
-					total_seq += 1
-					coord = f"{line_items[0]}:{line_items[38]}-{line_items[39]}({line_items[37]})"
-					num_mismatch = get_int(line_items[34])
-				if no_bulge_offtarget_sequence:
-					total_seq += 1
-					coord = f"{line_items[0]}:{line_items[29]}-{line_items[30]}({line_items[28]})"
-					num_mismatch = get_int(line_items[27])
-				offtargets.append({'seq': no_bulge_offtarget_sequence.strip(),
-								   'bulged_seq': bulge_offtarget_sequence.strip(),
-								   # 'reads': "%s,%s"%(offtarget_reads,float(offtarget_reads/control_primer)),
-								   'reads': f'{offtarget_reads},{offtarget_reads/control_primer:.5f}',
-								   'coord': str(coord),
-								   'annot': str(annot),
-								   'num_mismatch': str(num_mismatch),
-								   'target_seq': target_seq.strip(),
-								   'realigned_target_seq': realigned_target_seq.strip()
-								   })
-	# offtargets = sorted(offtargets, key=lambda x: x['reads'], reverse=True)
-	offtargets = sorted(offtargets, key=lambda x: int(x['reads'].split(",")[0]), reverse=True)
-	return offtargets, target_seq, total_seq
+	outDict=df.groupby('on_target_sequence')[['seq', 'bulged_seq', 'reads', 'coord', 'annot', 'num_mismatch', 'target_seq', 'realigned_target_seq','Title','outfile']].apply(lambda x: x.to_dict(orient='records')).to_dict()
+
+	
+	return outDict
+def parseSitesFile_bk(infile):
+	"""rewrite to use pandas df"""
+	df = pd.read_csv(infile,sep="\t")
+	df = df.sort_values("total_guideseq_reads",ascending=False)
+	df['coord'] = df['#site_chr']+":"+df.site_start.astype(str)+"-"+df.site_end.astype(str)
+	df['seq'] = df['Site_SubstitutionsOnly.site_sequence'].fillna("")
+	df['bulged_seq'] = df['Site_GapsAllowed.site_sequence'].fillna("")
+	df['reads'] = df['total_guideseq_reads'].astype(str)
+	df['num_mismatch'] = np.where(df['Site_SubstitutionsOnly.distance'] != "", 
+			df['Site_SubstitutionsOnly.distance'], 
+			df['Site_GapsAllowed.distance'])
+	df['num_mismatch'] = df['num_mismatch'].astype(int).astype(str)
+	try:
+		df['annot'] = df['Annotation']
+	except:
+		df['annot'] = ""
+	try:
+		df['Title'] = df['Title']
+	except:
+		df['Title'] = ""
+	try:
+		df['outfile'] = df['outfile']
+	except:
+		df['outfile'] = ""
+	df['target_seq'] = df['on_target_sequence']
+	df['realigned_target_seq'] = df['Site_GapsAllowed.on_target_sequence'].replace("none","")
+	outDict=df.groupby('on_target_sequence')[['seq', 'bulged_seq', 'reads', 'coord', 'annot', 'num_mismatch', 'target_seq', 'realigned_target_seq','Title','outfile']].apply(lambda x: x.to_dict(orient='records')).to_dict()
+
+	
+	return outDict
 
 # 3/6/2020
-def check_mismatch(a,b):
-	from Bio.Data import IUPACData
-	dna_dict = IUPACData.ambiguous_dna_values
-	set_a = dna_dict[a.upper()]
-	set_b = dna_dict[b.upper()]
-	overlap = list(set(list(set_a)).intersection(list(set_b)))
-	if len(overlap) == 0:
-		return True
-	else:
-		return False
+
 from Bio import SeqUtils
 def find_PAM(seq,PAM):
 	try:
@@ -159,71 +180,20 @@ def find_PAM(seq,PAM):
 				PAM_index=20
 	return PAM_index
 
-def to_simple_table(infile,outfile):
-	# eliminate from the identified files all the sites that don't have homology with the target site (for simplicity)
-	# print (infile)
-	df = pd.read_csv(infile,sep="\t")
-	col = ["Site_SubstitutionsOnly.Sequence","Site_GapsAllowed.Sequence"]
-	# df['tmp'] = df[col[0]]+df[col[1]]
-	# print (df['tmp'])
-	# print (df[col])
-	# df = df[df.tmp!=""]
-	# df = df.drop(['tmp'],axis=1)
-	df=df[(df[col[0]].notna())|(df[col[1]].notna())]
-	df.to_csv(outfile,sep="\t",index=False)
-
-def visualizeOfftargets(infile, outfile, title, PAM, genome=None,refseq_names=None):
-									  
-							
-
-	output_folder = os.path.dirname(outfile)
-	if not os.path.exists(output_folder):
-		os.makedirs(output_folder)
-				  
-																										 
-
-					  
-							   
-			   
-			   
-																							  
-	  
-							   
-			   
-			   
-
-	if genome!=None:
-		infile = parse_homer(infile,outfile+".raw.homer.tsv",genome,refseq_names=refseq_names)
-	# Get offtargets array from file
-	offtargets, target_seq, total_seq = parseSitesFile(infile)
-
-	to_simple_table(infile,infile.replace(".annot.tsv",".rm_no_match.annot.tsv"))
-																										   
-						 
-																			   
-		
-															  
-								 
-						 
-																							
-								  
-					
-				 
-								  
-		  
-								
-				 
-					 
-							
-						   
-												
-													 
- 
-
+def draw_svg(target_seq,PAM,offtargets,title,genome,outfile):
 	# Initiate canvas
-	dwg = svgwrite.Drawing(outfile + '.svg', profile='full', size=(u'100%', 100 + total_seq*(box_size + 1)))
-
-	if title is not None:
+	outdir = os.path.dirname(outfile)
+	# print (outdir)
+	if offtargets[0]['outfile']!="":
+		dwg = svgwrite.Drawing(f"{outdir}/{offtargets[0]['outfile']}.svg", profile='full', size=(u'100%', 100 + (len(offtargets)+5)*(box_size + 1)))
+	else:
+		dwg = svgwrite.Drawing(f"{outfile}.svg", profile='full', size=(u'100%', 100 + (len(offtargets)+5)*(box_size + 1)))
+	if offtargets[0]['Title']!="":
+		# Define top and left margins
+		x_offset = 20
+		y_offset = 50
+		dwg.add(dwg.text(offtargets[0]['Title'], insert=(x_offset, 30), style="font-size:20px; font-family:Courier"))
+	elif title is not None:
 		# Define top and left margins
 		x_offset = 20
 		y_offset = 50
@@ -233,27 +203,6 @@ def visualizeOfftargets(infile, outfile, title, PAM, genome=None,refseq_names=No
 		x_offset = 20
 		y_offset = 20
 
-	# Draw ticks
-	# if target_seq.find('N') >= 0:
-		# p = target_seq.index('N')
-		# if p > len(target_seq) / 2:  # PAM on the right end
-			# tick_locations = [1, len(target_seq)] + range(p, len(target_seq))  # limits and PAM
-			# tick_locations += [x + p - 20 + 1 for x in range(p)[::10][1:]]  # intermediate values
-			# tick_locations = list(set(tick_locations))
-			# tick_locations.sort()
-			# tick_legend = [p, 10, 1] + ['P', 'A', 'M']
-		# else:
-			# tick_locations = range(2, 6) + [14, len(target_seq)]  # complementing PAM and limits
-			# tick_legend = ['P', 'A', 'M', '1', '10'] + [str(len(target_seq) - 4)]
-
-		# for x, y in zip(tick_locations, tick_legend):
-			# dwg.add(dwg.text(y, insert=(x_offset + (x - 1) * box_size + 2, y_offset - 2), style="font-size:10px; font-family:Courier"))
-	# else:
-		# tick_locations = [1, len(target_seq)]  # limits
-		# tick_locations += range(len(target_seq) + 1)[::10][1:]
-		# tick_locations.sort()
-		# for x in tick_locations:
-			# dwg.add(dwg.text(str(x), insert=(x_offset + (x - 1) * box_size + 2, y_offset - 2), style="font-size:10px; font-family:Courier"))
 	## Assume PAM is on the right end Yichao rewrite visualization code, generic PAM
 	## PAM can be on the left or right, Yichao 0713
 	tick_locations = []
@@ -299,7 +248,7 @@ def visualizeOfftargets(infile, outfile, title, PAM, genome=None,refseq_names=No
 	# dwg.add(dwg.text('Coordinates', insert=(box_size * (len(target_seq) + 1) + 200, y_offset + box_size - 3), style="font-size:15px; font-family:Courier"))
 	# if genome!=None:
 		# dwg.add(dwg.text('Annotation', insert=(box_size * (len(target_seq) + 1) + 450, y_offset + box_size - 3), style="font-size:15px; font-family:Courier"))
-	dwg.add(dwg.text('Reads,Ratio', insert=(x_offset + box_size * len(target_seq) + 16, y_offset + box_size - 3), style="font-size:15px; font-family:Courier"))
+	dwg.add(dwg.text('Reads', insert=(x_offset + box_size * len(target_seq) + 16, y_offset + box_size - 3), style="font-size:15px; font-family:Courier"))
 	dwg.add(dwg.text('Mismatches', insert=(box_size * (len(target_seq) + 1) + 150, y_offset + box_size - 3), style="font-size:15px; font-family:Courier"))
 	dwg.add(dwg.text('Coordinates', insert=(box_size * (len(target_seq) + 1) + 250, y_offset + box_size - 3), style="font-size:15px; font-family:Courier"))
 	if genome!=None:
@@ -308,58 +257,12 @@ def visualizeOfftargets(infile, outfile, title, PAM, genome=None,refseq_names=No
 	# Draw aligned sequence rows
 	y_offset += 1  # leave some extra space after the reference row
 	line_number = 0  # keep track of plotted sequences
-										
-																			
-							   
-				
-								
-										  
-						 
-							 
-																															  
-		   
-																															  
-																																															
-				
-																																									 
-		   
-				  
-																														  
-		   
-		 
-							
-																				
-		  
-																				
-																														  
-		   
-									
-		
-				   
+
 										
 	for j, seq in enumerate(offtargets):
 		realigned_target_seq = offtargets[j]['realigned_target_seq']
 		no_bulge_offtarget_sequence = offtargets[j]['seq']
 		bulge_offtarget_sequence = offtargets[j]['bulged_seq']
-										  
-							 
-																															  
-		   
-																															  
-																																															
-				
-																																									 
-		   
-				  
-																														  
-		   
-		 
-							
-																				
-		  
-																				
-																														  
-		   
 
 		if no_bulge_offtarget_sequence != '':
 			k = 0
@@ -438,19 +341,61 @@ def visualizeOfftargets(infile, outfile, title, PAM, genome=None,refseq_names=No
 	dwg.save()
 
 
+
+def visualizeOfftargets(infile, outfile, title, PAM, genome=None,refseq_names=None,njobs=1):
+
+	output_folder = os.path.dirname(outfile)
+	if not os.path.exists(output_folder):
+		try:
+			os.makedirs(output_folder)
+		except:
+			print ("Folder exist")
+
+	if genome!=None:
+		infile = parse_homer(infile,outfile+".raw.homer.tsv",genome,refseq_names=refseq_names)
+
+	myDict = parseSitesFile(infile)
+	Parallel(n_jobs=njobs,verbose=10)(delayed(draw_svg)(target_seq,PAM,myDict[target_seq],title,genome,f"{outfile}_{target_seq}") for target_seq in myDict)
+
+	# for target_seq in myDict:
+		# print (target_seq,myDict[target_seq])
+		# draw_svg(target_seq,PAM,myDict[target_seq],title,genome,f"{outfile}_{target_seq}")
+	return myDict
+	
+def visualizeOfftargets_skip_homer(infile, outfile, title, PAM, genome=None,refseq_names=None,njobs=1):
+
+	output_folder = outfile
+	if not os.path.exists(output_folder):
+		try:
+			os.makedirs(output_folder)
+		except:
+			print ("Folder exist")
+
+	myDict = parseSitesFile(infile)
+	Parallel(n_jobs=njobs,verbose=10)(delayed(draw_svg)(target_seq,PAM,myDict[target_seq],title,genome,f"{outfile}/{outfile}_{target_seq}") for target_seq in myDict)
+
+	# for target_seq in myDict:
+		# print (target_seq,myDict[target_seq])
+		# draw_svg(target_seq,PAM,myDict[target_seq],title,genome,f"{outfile}_{target_seq}")
+	return myDict
+
 def main():
 	parser = argparse.ArgumentParser(description='Plot visualization plots for re-aligned reads.')
-	parser.add_argument("-f","--identified_file", help="FullPath/output file from reAlignment_circleseq.py", required=True)
+	parser.add_argument("-f","--identified_file", help="", required=True)
 	parser.add_argument("-o","--outfile", help="FullPath/VIZ", required=True)
 	parser.add_argument("-t","--title", help="Plot title", required=True)
+	parser.add_argument("--skip_homer",  help="skip homer",action='store_true')		
 	parser.add_argument("-g","--genome", help="if specified, homer annotation will be performed", default=None)
+	parser.add_argument("-n","--njobs", help="number of cores", default=1,type=int)
 	parser.add_argument("-a","--annotation", help="refseqID to gene name mapping", default=None)
 	parser.add_argument("--PAM", help="PAM sequence", default="NGG")	
 	args = parser.parse_args()
 
 	print(args)
-
-	visualizeOfftargets(args.identified_file, args.outfile, args.title, args.PAM,args.genome,args.annotation)
+	if args.skip_homer:
+		visualizeOfftargets_skip_homer(args.identified_file, args.outfile, args.title, args.PAM,args.genome,args.annotation,args.njobs)
+	else:
+		visualizeOfftargets(args.identified_file, args.outfile, args.title, args.PAM,args.genome,args.annotation,args.njobs)
 
 if __name__ == "__main__":
 

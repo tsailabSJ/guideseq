@@ -103,8 +103,8 @@ def validateManifest(manifest_data):
         sys.exit()
 
     # Now validate each field
-    checkIfBinary(manifest_data['bwa'])
-    checkIfBinary(manifest_data['bedtools'])
+    # checkIfBinary(manifest_data['bwa'])
+    # checkIfBinary(manifest_data['bedtools'])
     checkIfFasta(manifest_data['reference_genome'])
     # checkIfValidUndemultiplexed(manifest_data['undemultiplexed'])
     checkIfValidSamples(manifest_data['samples'])

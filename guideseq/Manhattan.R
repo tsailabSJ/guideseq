@@ -13,7 +13,7 @@ library(BSgenome.Hsapiens.UCSC.hg38)
 library(ggforce)
 library(ggrepel)
 library(viridis)
-
+message(input_file)
 CHANGEseq_matched = read_tsv(input_file,col_names=T)
 
 names(CHANGEseq_matched)[names(CHANGEseq_matched) == "BED_Max.Position"] <- "end"
@@ -52,10 +52,21 @@ hg38_tbl = tibble( chr = names(seqlengths(hg38)), chr_len = as.numeric(seqlength
     mutate(sample = str_replace(sample, "CRL[0-9]{3}_", "")) %>%
     arrange(sample, chr, start) %>%
     mutate(BPcum=start+tot) %>%
-    select(sample, name,chr, start, tot, BPcum, reads, distance) %>%
+    select(sample, name,chr, start, tot, BPcum, reads, distance) 
+tryCatch({
+  circleseq_matched_manhattan_annotated = circleseq_matched_manhattan_annotated %>% 
     group_by(sample) %>%
     mutate(label_x=ifelse(distance==0, BPcum, NA), label_y=ifelse(distance==0, reads, NA), 
            label_distance=ifelse(distance==0, 0.1*max(reads), NA))
+
+},error=function(cond){
+  return (NA)
+},warning=function(cond){
+  return (NA)
+},
+,finally={message("Couldn't find on-target sequence")}
+)
+# when match on-target sequence
     # mutate(label_x=ifelse(name==on_target, BPcum, NA), label_y=ifelse(name==on_target, reads, NA), 
            # label_distance=ifelse(name==on_target, 0.1*max(reads), NA))
 

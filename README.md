@@ -3,6 +3,13 @@
 [![Python versions][python-shield]][python-url]
 [![Platforms][platform-shield]][python-url]
 
+
+- add `demultiplex` back
+
+- add new UMI consolidation step
+
+- python ~/dirs/guideseq_V3/guideseq/guideseq.py parallel -m test.yaml
+
 # guideseq: The GUIDE-Seq Analysis Package
 
 The guideseq package implements our data preprocessing and analysis pipeline for GUIDE-Seq data. It takes raw sequencing reads (FASTQ) and a parameter manifest file (.yaml) as input and produces a table of annotated off-target sites as output.
@@ -287,6 +294,9 @@ In addition to end-to-end pipeline analysis functionality, the guideseq package 
 	- `-m or --manifest`: Specify the path to the manifest YAML file
 - **Runnable Example**:
 	- `python guideseq/guideseq.py demultiplex -m test/test_manifest.yaml`
+
+When use illumina demultiplexed fastq, add `--use-bases-mask Y146,I8,I8,Y156` to `bcl2fastq` command, where the numbers, e.g., `146`, mean read length.
+
 
 ### `umitag` Reads<a name="umitag"></a>
 

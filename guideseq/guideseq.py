@@ -5,7 +5,7 @@
 guideseq.py
 ===========
 
-V2
+guideseq pool
 
 serves as the wrapper for all guideseq pipeline
 
@@ -19,40 +19,57 @@ import traceback
 import subprocess
 # Set up logger
 import log
-logger = log.createCustomLogger('root',"guideseq_V2")
-
+logger = log.createCustomLogger('root',"guideseq_pool")
+import datetime
 from alignReads import alignReads
 from filterBackgroundSites import filterBackgroundSites,filterBlackList,filterControl
-from umi import umitag, consolidate
 from visualization import visualizeOfftargets
 import identifyOfftargetSites
 import validation
 from tabulate import tabulate
+from demultiplex import demultiplex,demultiplex_parallel
 
-DEFAULT_WINDOW_SIZE = 25
-DEFAULT_MAX_SCORE = 7
-
-CONSOLIDATE_MIN_QUAL = 15
-CONSOLIDATE_MIN_FREQ = 0.9
-
+DEFAULT_YAML = os.path.dirname(os.path.realpath(__file__)) + "/default.yaml"
+myDate=str(datetime.date.today())
 def get_parameters(manifest_data):
-	default_yaml = os.path.dirname(os.path.realpath(__file__)) + "/default.yaml"
+
+	# init
 	default_refseqName = os.path.dirname(os.path.realpath(__file__)) + "/refseq_gene_name.py"
-	with open(default_yaml, 'r') as f:
+	with open(DEFAULT_YAML, 'r') as f:
 		default = yaml.load(f)
 	with open(manifest_data, 'r') as f:
-		return_dict = yaml.load(f)
+		return_dict = yaml.load(f) # this is user input YAML
 	default['analysis_folder'] = os.getcwd()
 	default['refseq_names'] = default_refseqName
-	default['genome'] = ""
-	default['Manhattan.R'] = os.path.dirname(os.path.realpath(__file__)) + "/Manhattan.R"
 	validation.validateManifest(return_dict)
-	return_dict['parameters'] = {}
+	
+	# assign default if user YAML missing some parameters
+	return_dict = assign_default(return_dict,default)
+
+	return return_dict
+
+def assign_default(return_dict,default):
+	
+	section_list = ['demultiplex']
+	for k in section_list:
+		if k in return_dict:
+			for p in default[k]:
+				if not p in return_dict[k]:
+					return_dict[k][p] = default[k][p]
+		else:
+			return_dict[k] = default[k]
+
+	# default global variables
 	for p in default:
-		if not p in return_dict:
-			return_dict['parameters'][p] = default[p]
-		elif p!= "samples":
-			return_dict['parameters'][p] = return_dict[p]
+		if not p in section_list+['samples']:
+			if not p in return_dict:
+				return_dict[p] = default[p]
+	
+	# set abs path for input and output
+	for k in section_list:
+		return_dict[k]['out_dir'] = os.path.join(return_dict['analysis_folder'], return_dict[k]['out_dir'])
+		return_dict[k]['input_dir'] = os.path.join(return_dict['analysis_folder'], return_dict[k]['input_dir'])
+
 	return return_dict
 
 class GuideSeq:
@@ -60,19 +77,26 @@ class GuideSeq:
 	def __init__(self):
 		pass
 
-	def parseManifest(self, manifest_path,sample='all'):
+	def parseManifest(self, manifest_path,sample='all',user_dict=None):
 		logger.info('Loading manifest...')
 
 		try:
 			manifest_data = get_parameters(manifest_path)
 			self.samples = {}
-			self.parameters = manifest_data['parameters']
+			self.parameters = manifest_data
+			# print (self.parameters['guideseq_pool']==False)
+			# exit()
+			if user_dict == "None":
+				user_dict = None
+			if user_dict:
+				for p in user_dict:
+					self.parameters[p] = user_dict[p]
 			if sample != "all":
 				self.samples[sample] = manifest_data['samples'][sample]
 			else:
 				self.samples = manifest_data['samples']
+			del self.parameters['samples']
 			logger.info("\n"+tabulate([(k,v) for k,v in self.parameters.items()])) 
-			# print(tabulate([(k,v) for k,v in self.undemultiplexed.items()])) 
 			logger.info("\n"+tabulate([(k,v) for k,v in self.samples[list(self.samples.keys())[0]].items()])) 
 
 		except Exception as e:
@@ -81,102 +105,88 @@ class GuideSeq:
 			logger.error(traceback.format_exc())
 			sys.exit()
 
+	def demultiplex(self):
 
-	def umitag(self):
-		logger.info('umitagging reads...')
-
+		barcode_dict = {}
+		for sample in self.samples:
+			barcode1 = self.samples[sample]['barcode1']
+			barcode2 = self.samples[sample]['barcode2']
+			barcode_dict[sample] = [barcode1,barcode2]
+			
+			barcode1 = self.samples[sample]['controlbarcode1']
+			barcode2 = self.samples[sample]['controlbarcode2']
+			barcode_dict["Control_"+sample] = [barcode1,barcode2]
+		# print (barcode_dict)
 		try:
-			self.umitagged = {}
-			for sample in self.samples:
-				try:
-					self.umitagged[sample] = {}
-					self.umitagged[sample]['read1'] = os.path.join(self.parameters['analysis_folder'], 'umitagged', sample + '.r1.umitagged.fastq')
-					self.umitagged[sample]['read2'] = os.path.join(self.parameters['analysis_folder'], 'umitagged', sample + '.r2.umitagged.fastq')
+			logger.info('Demultiplexing Undetermined files...')
+			if self.parameters['njobs'] == 1 or self.parameters['guideseq_pool']==False:
+				logger.info('guide-seq demultiplex mode, 1-core')
+				demultiplex(os.path.join(self.parameters['demultiplex']['input_dir'],self.parameters['demultiplex']['forward']),
+						os.path.join(self.parameters['demultiplex']['input_dir'],self.parameters['demultiplex']['reverse']),
+						os.path.join(self.parameters['demultiplex']['input_dir'],self.parameters['demultiplex']['index1']),
+						os.path.join(self.parameters['demultiplex']['input_dir'],self.parameters['demultiplex']['index2']),
+						barcode_dict,
+						out_dir=self.parameters['demultiplex']['out_dir'],
+						mismatch=self.parameters['demultiplex']['mismatch'],
+						min_reads=self.parameters['demultiplex']['min_reads'],subsample_reads=self.parameters['demultiplex']['subsample_reads'])
+			else:
+				demultiplex_parallel(os.path.join(self.parameters['demultiplex']['input_dir'],self.parameters['demultiplex']['forward']),
+						os.path.join(self.parameters['demultiplex']['input_dir'],self.parameters['demultiplex']['reverse']),
+						os.path.join(self.parameters['demultiplex']['input_dir'],self.parameters['demultiplex']['index1']),
+						os.path.join(self.parameters['demultiplex']['input_dir'],self.parameters['demultiplex']['index2']),
+						barcode_dict,
+						out_dir=self.parameters['demultiplex']['out_dir'],
+						mismatch=self.parameters['demultiplex']['mismatch'],
+						min_reads=self.parameters['demultiplex']['min_reads'],subsample_reads=self.parameters['demultiplex']['subsample_reads'],splitFastq_path=self.parameters['splitFastq'],ncore=self.parameters['njobs'])
 
-					umitag.umitag(self.samples[sample]['read1'],
-								  self.samples[sample]['read2'],
-								  self.samples[sample]['index1'],
-								  self.samples[sample]['index2'],
-								  self.umitagged[sample]['read1'],
-								  self.umitagged[sample]['read2'],
-								  os.path.join(self.parameters['analysis_folder'], 'umitagged'))
+			logger.info('Successfully demultiplexed reads.')
 
-					control_sample = "control_"+sample
-					self.umitagged[control_sample] = {}
-					self.umitagged[control_sample]['read1'] = os.path.join(self.parameters['analysis_folder'], 'umitagged', control_sample + '.r1.umitagged.fastq')
-					self.umitagged[control_sample]['read2'] = os.path.join(self.parameters['analysis_folder'], 'umitagged', control_sample + '.r2.umitagged.fastq')
-
-					umitag.umitag(self.samples[sample]['controlread1'],
-								  self.samples[sample]['controlread2'],
-								  self.samples[sample]['controlindex1'],
-								  self.samples[sample]['controlindex2'],
-								  self.umitagged[control_sample]['read1'],
-								  self.umitagged[control_sample]['read2'],
-								  os.path.join(self.parameters['analysis_folder'], 'umitagged'))
-				except:
-					logger.error(f'UMItag failed for sample {sample}')
-					logger.error(traceback.format_exc())
-
-			logger.info('Successfully umitagged reads.')
 		except Exception as e:
-			logger.error('Error umitagging')
-			logger.error(traceback.format_exc())
-			quit()
-
-	def consolidate(self):
-		logger.info('Consolidating reads...')
-
-		try:
-			self.consolidated = {}
-			for sample in self.samples:
-				try:
-					self.consolidated[sample] = {}
-					self.consolidated[sample]['read1'] = os.path.join(self.parameters['analysis_folder'], 'consolidated', sample + '.r1.consolidated.fastq')
-					self.consolidated[sample]['read2'] = os.path.join(self.parameters['analysis_folder'], 'consolidated', sample + '.r2.consolidated.fastq')
-
-					consolidate.consolidate(self.umitagged[sample]['read1'], self.consolidated[sample]['read1'], self.parameters['CONSOLIDATE_MIN_QUAL'], self.parameters['CONSOLIDATE_MIN_FREQ'])
-					consolidate.consolidate(self.umitagged[sample]['read2'], self.consolidated[sample]['read2'], self.parameters['CONSOLIDATE_MIN_QUAL'], self.parameters['CONSOLIDATE_MIN_FREQ'])
-
-					control_sample = "control_"+sample
-					self.consolidated[control_sample] = {}
-					self.consolidated[control_sample]['read1'] = os.path.join(self.parameters['analysis_folder'], 'consolidated', control_sample + '.r1.consolidated.fastq')
-					self.consolidated[control_sample]['read2'] = os.path.join(self.parameters['analysis_folder'], 'consolidated', control_sample + '.r2.consolidated.fastq')
-
-					consolidate.consolidate(self.umitagged[control_sample]['read1'], self.consolidated[control_sample]['read1'], self.parameters['CONSOLIDATE_MIN_QUAL'], self.parameters['CONSOLIDATE_MIN_FREQ'])
-					consolidate.consolidate(self.umitagged[control_sample]['read2'], self.consolidated[control_sample]['read2'], self.parameters['CONSOLIDATE_MIN_QUAL'], self.parameters['CONSOLIDATE_MIN_FREQ'])
-
-				except:
-					logger.error(f'Consolidate failed for sample {sample}')
-					logger.error(traceback.format_exc())
-
-			logger.info('Successfully consolidated reads.')
-		except Exception as e:
-			logger.error('Error umitagging')
+			logger.error('Error demultiplexing reads.')
 			logger.error(traceback.format_exc())
 			quit()
 
 	def alignReads(self):
-		logger.info('Aligning reads...')
+		logger.info('Aligning reads and collapsing reads based on UMI...')
 
 		try:
-			self.aligned = {}
 			for sample in self.samples:
 				try:
-					sample_alignment_path = os.path.join(self.parameters['analysis_folder'], 'aligned', sample + '.sam')
-					alignReads(self.parameters['bwa'],
-							   self.parameters['reference_genome'],
-							   self.consolidated[sample]['read1'],
-							   self.consolidated[sample]['read2'],
-							   sample_alignment_path,njobs=self.parameters['njobs'])
-					self.aligned[sample] = sample_alignment_path
-					sample = "control_"+sample
-					sample_alignment_path = os.path.join(self.parameters['analysis_folder'], 'aligned', sample + '.sam')
-					alignReads(self.parameters['bwa'],
-							   self.parameters['reference_genome'],
-							   self.consolidated[sample]['read1'],
-							   self.consolidated[sample]['read2'],
-							   sample_alignment_path,njobs=self.parameters['njobs'])
-					self.aligned[sample] = sample_alignment_path
+					# default input
+					if not "read1" in self.samples[sample]:
+						if self.parameters['demultiplex']['subsample_reads'] > 0:
+							self.samples[sample]['read1'] = os.path.join(self.parameters['demultiplex']['out_dir'], f"{sample}.sampling.r1.fastq")
+							self.samples[sample]['read2'] = os.path.join(self.parameters['demultiplex']['out_dir'], f"{sample}.sampling.r2.fastq")
+							self.samples[sample]['controlread1'] = os.path.join(self.parameters['demultiplex']['out_dir'], f"Control_{sample}.sampling.r1.fastq")
+							self.samples[sample]['controlread2'] = os.path.join(self.parameters['demultiplex']['out_dir'], f"Control_{sample}.sampling.r2.fastq")
+						else:
+							self.samples[sample]['read1'] = os.path.join(self.parameters['demultiplex']['out_dir'], f"{sample}.r1.fastq")
+							self.samples[sample]['read2'] = os.path.join(self.parameters['demultiplex']['out_dir'], f"{sample}.r2.fastq")
+							self.samples[sample]['controlread1'] = os.path.join(self.parameters['demultiplex']['out_dir'], f"Control_{sample}.r1.fastq")
+							self.samples[sample]['controlread2'] = os.path.join(self.parameters['demultiplex']['out_dir'], f"Control_{sample}.r2.fastq")
+					
+					sample_alignment_path = os.path.join(self.parameters['analysis_folder'], 'aligned', sample + '.dedup.bam')
+					# def alignReads(bwa=None, samtools=None, # Tools
+					# reference_genome=None, R1=None, R2=None, label=None, output_dir=None, # Inputs
+					# ,umi_tools=None, njobs=None, **kwargs)
+					alignReads(
+							   R1=self.samples[sample]['read1'],
+							   R2=self.samples[sample]['read2'],
+							   label=sample,
+							   output_dir=f"{self.parameters['analysis_folder']}/aligned",
+							   **self.parameters
+							   )
+					# exit()
+					self.samples[sample]['aligned'] = sample_alignment_path
+					sample_alignment_path = os.path.join(self.parameters['analysis_folder'], 'aligned', "Control_"+sample + '.dedup.bam')
+					alignReads(
+							   R1=self.samples[sample]['controlread1'],
+							   R2=self.samples[sample]['controlread2'],
+							   label="Control_"+sample,
+							   output_dir=f"{self.parameters['analysis_folder']}/aligned",
+							   **self.parameters
+							   )
+					self.samples[sample]['controlaligned'] = sample_alignment_path
 				except:
 					logger.error(f'Failed for sample {sample}')	
 					logger.error(traceback.format_exc())
@@ -196,34 +206,39 @@ class GuideSeq:
 			# Identify offtarget sites for each sample
 			for sample in self.samples:
 				try:
+					# default input
+					if not "aligned" in self.samples[sample]:
+						try:
+							self.samples[sample]['aligned'] = self.parameters['aligned']
+							self.samples[sample]['controlaligned'] = self.parameters['controlaligned']
+							logger.info('Using user provided dedup BAM path...')
+						except:
+							logger.info('Using system default dedup BAM path...')
+							self.samples[sample]['aligned'] = os.path.join(self.parameters['analysis_folder'], 'aligned', sample + '.dedup.bam')
+							self.samples[sample]['controlaligned'] = os.path.join(self.parameters['analysis_folder'], 'aligned', "Control_"+sample + '.dedup.bam')
 					# Prepare sample annotations
 					sample_data = self.samples[sample]
-					annotations = {}
-					annotations['Description'] = sample_data['description']
-					annotations['Targetsite'] = sample
-					# print ("Using control primer",sample_data['control_primer'])
 
-					annotations['Sequence'] = sample_data['target']
-					# print (annotations)
+					self.identified[sample] = os.path.join(self.parameters['analysis_folder'], 'identified', sample + '.matched.final.high_confidence.tsv')
+					# new function
+					identifyOfftargetSites.identify_sites(self.parameters['reference_genome'],
+					   self.samples[sample]['aligned'],
+					   self.samples[sample]['controlaligned'],
+					   self.samples[sample]['aligned'].replace(f"aligned/{sample}",f"aligned/{sample}.mispriming"),
+					   self.samples[sample]['controlaligned'].replace(f"aligned/Control_{sample}",f"aligned/Control_{sample}.mispriming"),
+					   sample,
+					   f"{self.parameters['analysis_folder']}/identified",
+					   self.samples[sample]['target'],
+					   njobs=self.parameters['njobs'],
+					   extend_spacer=self.parameters['extend_spacer'],
+					   extend_pam=self.parameters['extend_pam'],
+					   flank=self.parameters['extend_flank'],
+					   bedtools=self.parameters['bedtools'],
+					   chrom_size=self.parameters['chrom_size'],
+					   min_read_count=self.parameters['min_guideseq_read_count'], # not used
+					   max_control_reads=self.parameters['max_control_read_count'] # not used
+					   )
 
-					samfile = os.path.join(self.parameters['analysis_folder'], 'aligned', sample + '.sam')
-
-					self.identified[sample] = os.path.join(self.parameters['analysis_folder'], 'identified', sample + '_identifiedOfftargets.txt')
-
-					identifyOfftargetSites.analyze(samfile, self.parameters['reference_genome'], self.identified[sample], annotations,
-												   self.parameters['window_size'], self.parameters['max_score'], sample_data['control_primer'],self.parameters)
-
-					sample = "control_"+sample
-
-					# print ("Using control primer",sample_data['control_primer'])
-
-
-					samfile = os.path.join(self.parameters['analysis_folder'], 'aligned', sample + '.sam')
-
-					self.identified[sample] = os.path.join(self.parameters['analysis_folder'], 'identified', sample + '_identifiedOfftargets.txt')
-
-					identifyOfftargetSites.analyze(samfile, self.parameters['reference_genome'], self.identified[sample], annotations,
-												   self.parameters['window_size'], self.parameters['max_score'], sample_data['control_primer'],self.parameters)
 				except:
 					logger.error(f'Failed for sample {sample}')   
 					logger.error(traceback.format_exc())
@@ -235,30 +250,6 @@ class GuideSeq:
 			logger.error(traceback.format_exc())
 			quit()
 
-	def filterBackgroundSites(self):
-		logger.info('Filtering background sites')
-
-		# self.filtered = {}
-		for sample in self.samples:
-			try:
-				out = os.path.join(self.parameters['analysis_folder'], 'identified', sample + '_identifiedOfftargets.rmblck.txt')
-				filterBlackList(self.parameters['bedtools'], self.identified[sample], self.parameters['blacklist'], out)
-				self.identified[sample] = out
-				sample = "control_"+sample
-				out = os.path.join(self.parameters['analysis_folder'], 'identified', sample + '_identifiedOfftargets.rmblck.txt')
-				filterBlackList(self.parameters['bedtools'], self.identified[sample], self.parameters['blacklist'], out)
-				self.identified[sample] = out
-				
-				# combine treatment and control
-				sample = sample.replace("control_","")
-				out = os.path.join(self.parameters['analysis_folder'], 'identified', sample + '_identifiedOfftargets.rmblck.with_control_counts.txt')
-				filterControl(self.parameters['bedtools'], self.identified[sample], self.identified["control_"+sample], out)
-				logger.info('Finished background filtering for {0} sample'.format(sample))
-
-			except Exception as e:
-				logger.error('Error filtering background sites: %s'%(sample))
-				logger.error(traceback.format_exc())
-
 	def visualize(self):
 		logger.info('Visualizing off-target sites')
 
@@ -267,44 +258,31 @@ class GuideSeq:
 			try:
 				infile = self.identified[sample]
 				outfile = os.path.join(self.parameters['analysis_folder'], 'visualization', sample + '_offtargets')
-				try:
-					self.parameters['PAM']
-					visualizeOfftargets(infile, outfile, title=sample,PAM=self.parameters['PAM'],genome=self.parameters['genome'],refseq_names=self.parameters['refseq_names'])
-				except:
-					visualizeOfftargets(infile, outfile, title=sample,PAM="NGG",genome=self.parameters['genome'],refseq_names=self.parameters['refseq_names'])
-				# Manhattan plot
-				outfile = os.path.join(self.parameters['analysis_folder'], 'visualization', sample + '.Manhattan.pdf')
-				command = f"{self.parameters['Rscript']} {self.parameters['Manhattan.R']} {self.parameters['on_target_reference_sequence']} {infile} {outfile}"
-				subprocess.call(command,shell=True)
+				logger.info("visualizeOfftargets")
+				visualizeOfftargets(infile, outfile, title=sample,PAM=self.parameters['PAM'],genome=self.parameters['genome'],refseq_names=self.parameters['refseq_names'],njobs=self.parameters['njobs'])
+
 			except Exception as e:
 				logger.error('Error visualizing off-target sites: %s'%(sample))
 				logger.error(traceback.format_exc())
-			try:
-				sample = "control_"+sample
-				infile = self.identified[sample]
-				outfile = os.path.join(self.parameters['analysis_folder'], 'visualization', sample + '_offtargets')
-				try:
-					self.parameters['PAM']
-					visualizeOfftargets(infile, outfile, title=sample,PAM=self.parameters['PAM'],genome=self.parameters['genome'],refseq_names=self.parameters['refseq_names'])
-				except:
-					visualizeOfftargets(infile, outfile, title=sample,PAM="NGG",genome=self.parameters['genome'],refseq_names=self.parameters['refseq_names'])
-				# Manhattan plot
-				outfile = os.path.join(self.parameters['analysis_folder'], 'visualization', sample + '.Manhattan.pdf')
-				command = f"{self.parameters['Rscript']} {self.parameters['Manhattan.R']} {self.parameters['on_target_reference_sequence']} {infile} {outfile}"
-				subprocess.call(command,shell=True)
-			except Exception as e:
-				logger.error('Error visualizing off-target sites: %s'%(sample))
-				logger.error(traceback.format_exc())
+
 		logger.info('Finished visualizing off-target sites')
-	def parallel(self, manifest_path, lsf,step):
-		logger.info('Submitting parallel jobs for GuideSeqV2')
+	def parallel(self, manifest_path, lsf,step,overwrite,queue):
+		logger.info('Submitting parallel jobs for GUIDEseq_pool')
+		if not os.path.exists("HPC_parallel_log"):
+			os.makedirs("HPC_parallel_log")
 		current_script = __file__
 		count = 1
+		if "gpu" in queue:
+			if overwrite == None:
+				overwrite={}
+			overwrite['bwa']='fq2bam'
+			lsf+= ' -gpu "num=1/host:mode=exclusive_process"'
 		try:
 			for sample in self.samples:
-				cmd = f'python {current_script} single --manifest {manifest_path} --sample {sample} --step {step}'
+				cmd = f'/research_jude/rgs01_jude/groups/tsaigrp/projects/Genomics/common/anaconda3/envs/changeseq_py3/bin/python {current_script} main --manifest {manifest_path} --sample {sample} --step {step} --overwrite "{overwrite}"'
+				cmd=lsf.replace("{Sample_Name}",sample).replace("{queue}",queue).replace("{myDate}",myDate).replace("{memory}",str(self.parameters['memory'])).replace("{njobs}",str(self.parameters['njobs'])) + f" -J {sample[:10]} " + cmd
 				logger.info(cmd)
-				subprocess.call(lsf.split() + [f"-J {sample[:10]}"] + [cmd])
+				subprocess.call(cmd,shell=True)
 				count += 1
 			logger.info('Finished job submission')
 
@@ -316,94 +294,68 @@ class GuideSeq:
 def parse_args():
 	parser = argparse.ArgumentParser()
 
-	subparsers = parser.add_subparsers(description='Individual Step Commands',
+	subparsers = parser.add_subparsers(description='Two run mode: main or parallel',
 									   help='Use this to run individual steps of the pipeline',
 									   dest='command')
 
-	all_parser = subparsers.add_parser('all', help='Run all steps of the pipeline')
-	all_parser.add_argument('--manifest', '-m', help='Specify the manifest Path', required=True)
-	all_parser.add_argument('--sample', '-s', help='Specify sample to process (default is all)', default='all')
-
-	parallel_parser = subparsers.add_parser('parallel', help='Run a single step or a series of steps in parallel, for each sample in the yaml file')
+	parallel_parser = subparsers.add_parser('parallel', help='submit a job for each sample specified in the YAML file. Tested in the LSF system. May not work in other job management systems.')
 	parallel_parser.add_argument('--manifest', '-m', help='Specify the manifest Path', required=True)
-	parallel_parser.add_argument('--lsf', '-l', help='Specify LSF CMD', default='bsub -R rusage[mem=60000] -P GUIDEV2 -q priority')
-	parallel_parser.add_argument('--step', help='Specify which steps of pipepline to run (all, umitag, consolidate, align, identify,visualize)', default='umitag+consolidate+align+identify+visualize')
+	parallel_parser.add_argument('--sample', '-s', help='Specify sample to process (default is all)', default='all')
+	parallel_parser.add_argument('--queue', '-q', help='LSF queue', default='standard')
+	parallel_parser.add_argument('--lsf', '-l', help='Specify LSF CMD', default='bsub -R "rusage[mem={memory}] span[hosts=1]" -n {njobs} -P GUIDEseq_pool -q {queue} -o HPC_parallel_log/GUIDEseq_pool_{myDate}_{Sample_Name}_%J.log')
+	parallel_parser.add_argument('--step', help='Specify which steps of pipepline to run (demultiplex, align, identify,visualize)', default='demultiplex+align+identify+visualize')
+	# parallel_parser.add_argument('--step', help='Specify which steps of pipepline to run (demultiplex, align, identify,visualize)', default='demultiplex+align')
+	parallel_parser.add_argument('--overwrite', help='overwrite specifications in the yaml file', default=None,type=yaml.load)
 
-	single_parser = subparsers.add_parser('single', help='Run a single step or a series of steps (other than demultiplex) for a single sample or all samples')
-	single_parser.add_argument('--manifest', '-m', help='Specify the manifest Path', required=True)
-	single_parser.add_argument('--sample', '-s', help='Specify sample to process (default is all)', default='all')
-	single_parser.add_argument('--step', help='Specify steps, umitag, consolidate, align, identify,visualize, order does not matter', default='umitag+consolidate+align+identify+visualize')
-
-	# umitag_parser = subparsers.add_parser('umitag', help='UMI tag demultiplexed FASTQ files for consolidation')
-	# all_parser.add_argument('--manifest', '-m', help='Specify the manifest Path', required=True)
-	# all_parser.add_argument('--sample', '-s', help='Specify sample to process (default is all)', default='all')
-
-	# consolidate_parser = subparsers.add_parser('consolidate', help='Consolidate UMI tagged FASTQs')
-	# all_parser.add_argument('--manifest', '-m', help='Specify the manifest Path', required=True)
-	# all_parser.add_argument('--sample', '-s', help='Specify sample to process (default is all)', default='all')
-
-	# align_parser = subparsers.add_parser('align', help='Paired end read mapping to genome')
-	# all_parser.add_argument('--manifest', '-m', help='Specify the manifest Path', required=True)
-	# all_parser.add_argument('--sample', '-s', help='Specify sample to process (default is all)', default='all')
-
-	# identify_parser = subparsers.add_parser('identify', help='Identify GUIDE-seq offtargets')
-	# all_parser.add_argument('--manifest', '-m', help='Specify the manifest Path', required=True)
-	# all_parser.add_argument('--sample', '-s', help='Specify sample to process (default is all)', default='all')
-
-	# visualize_parser = subparsers.add_parser('visualize', help='Visualize off-target sites')
-	# all_parser.add_argument('--manifest', '-m', help='Specify the manifest Path', required=True)
-	# all_parser.add_argument('--sample', '-s', help='Specify sample to process (default is all)', default='all')
+	main_parser = subparsers.add_parser('main', help='Run a single step or a series of steps for one or all samples')
+	main_parser.add_argument('--manifest', '-m', help='Specify the manifest Path', required=True)
+	main_parser.add_argument('--sample', '-s', help='Specify sample to process (default is all)', default='all')
+	main_parser.add_argument('--step', help='Specify steps, demultiplex, align, identify,visualize, order does not matter', default='demultiplex+align+identify+visualize')
+	main_parser.add_argument('--overwrite', help='overwrite specifications in the yaml file', default=None,type=yaml.load)
+	
+	init_parser = subparsers.add_parser('init', help='initialize a default yaml in the current folder')
 
 	return parser.parse_args()
 
 
 def main():
 	args = parse_args()
-	logger.info("User command: %s"%(" ".join(sys.argv)))
+	
 
-	if args.command == 'all':
-
+	if args.command == "init":
+		subprocess.call(f"cp {DEFAULT_YAML} Guideseq.yaml",shell=True)
+		print("Guideseq.yaml has been initialize. \nPlease add sample info and then run GUIDE-seq analysis using the 'main' or the 'parallel' subcommand.")
+	elif args.command == "main":
+		# run a single sample
+		logger.info("User command: %s"%(" ".join(sys.argv)))
 		g = GuideSeq()
-		g.parseManifest(args.manifest,args.sample)
-		g.umitag()
-		g.consolidate()
-		g.alignReads()
-		g.identifyOfftargetSites()
-		g.filterBackgroundSites()
-		g.visualize()
-
-
-	elif args.command == "single":
-
-		g = GuideSeq()
-		g.parseManifest(args.manifest,args.sample)
+		g.parseManifest(args.manifest,args.sample,args.overwrite)
 		steps  = args.step.split("+")
-		if "umitag" in steps:
-			g.umitag()
-		if "consolidate" in steps:
-			g.consolidate()
+		if "demultiplex" in steps:
+			g.demultiplex()
 		if "align" in steps:
 			g.alignReads()
 		if "identify" in steps:
 			g.identifyOfftargetSites()
-			g.filterBackgroundSites()
+			# exit()
+			# g.filterBackgroundSites()
 		if "visualize" in steps:
 			try:
 				g.identified
 			except:
 				g.identified = {}
 				for sample in g.samples:
-					g.identified[sample] = os.path.join(g.parameters['analysis_folder'], 'identified', sample + '_identifiedOfftargets.rmblck.txt')
-					sample = "control_"+sample
-					g.identified[sample] = os.path.join(g.parameters['analysis_folder'], 'identified', sample + '_identifiedOfftargets.rmblck.txt')
-
-
+					if 'identified' in g.samples[sample]:
+						g.identified[sample] = g.samples[sample]['identified']
+					else:
+						g.identified[sample] = os.path.join(g.parameters['analysis_folder'], 'identified', sample + '.matched.final.high_confidence.tsv')
 			g.visualize()
 
 	elif args.command == 'parallel':
 		c = GuideSeq()
-		c.parseManifest(args.manifest)
-		c.parallel(args.manifest, args.lsf, args.step)
+		c.parseManifest(args.manifest,args.sample,args.overwrite)
+		# exit()
+		c.parallel(args.manifest, args.lsf, args.step,args.overwrite,args.queue)
 
  
 if __name__ == '__main__':

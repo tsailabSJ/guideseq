@@ -39,11 +39,17 @@ def get_sample_id(i1, i2, sample_names,mismatch=1):
 			if distance(seq2[:8],b2) <= mismatch:
 				return k
 	return "skip"
+def revcomp(seq):
+	try: ## python2
+		tab = string.maketrans(b"ACTG", b"TGAC")
+	except:  ## python3
+		tab = bytes.maketrans(b"ACTG", b"TGAC")
+	return seq.translate(tab)[::-1]
 
-def demultiplex_parallel(read1, read2, index1, index2, sample_names={}, out_dir="out_dir",mismatch=1,min_reads=0,subsample_reads=-1,splitFastq_path=None,ncore=None):
+def demultiplex_parallel(read1, read2, index1, index2, sample_names={}, out_dir="out_dir",mismatch=1,min_reads=0,subsample_reads=-1,splitFastq_path=None,ncore=None,revcomp_I2=False):
 	if os.system(splitFastq_path) == 0:
 		print ("splitFastq needs to be installed to run demultiplex in parallel, running in single core mode")
-		demultiplex(read1, read2, index1, index2, sample_names, out_dir,mismatch,min_reads,subsample_reads)
+		demultiplex(read1, read2, index1, index2, sample_names, out_dir,mismatch,min_reads,subsample_reads,revcomp_I2)
 		return 1
 	if not os.path.exists(out_dir):
 		try:
@@ -62,16 +68,23 @@ def demultiplex_parallel(read1, read2, index1, index2, sample_names={}, out_dir=
 	subprocess.call(command,shell=True,stdout=sys.stdout,stderr=sys.stderr)
 	R1files = glob.glob(f"{out_dir}/*Undetermined_split.R1.fastq")
 	# print (R1files)
-	Parallel(n_jobs=ncore,verbose=10)(delayed(demultiplex)(R1, R1.replace("R1","R2"), R1.replace("R1","I1"), R1.replace("R1","I2"), sample_names, R1.split(".R1.")[0]+".split_demultiplex_out",mismatch,0,-1) for R1 in R1files)
+	Parallel(n_jobs=ncore,verbose=10)(delayed(demultiplex)(R1, R1.replace("R1","R2"), R1.replace("R1","I1"), R1.replace("R1","I2"), sample_names, R1.split(".R1.")[0]+".split_demultiplex_out",mismatch,0,-1,revcomp_I2) for R1 in R1files)
 	# merge
 	for sample_id in sample_names:
 		command = f"cat {out_dir}/*split_demultiplex_out/{sample_id}*.r1.fastq > {out_dir}/{sample_id}.r1.fastq"
 		subprocess.call(command,shell=True,stdout=sys.stdout,stderr=sys.stderr)
 		command = f"cat {out_dir}/*split_demultiplex_out/{sample_id}*.r2.fastq > {out_dir}/{sample_id}.r2.fastq"
 		subprocess.call(command,shell=True,stdout=sys.stdout,stderr=sys.stderr)
+	os.system(f"rm -r {out_dir}/*.split_demultiplex_out")
+	for R1 in R1files:
+		os.system(f'rm {R1}')
+		os.system(f'rm {R1.replace("R1","R2")}')
+		os.system(f'rm {R1.replace("R1","I1")}')
+		os.system(f'rm {R1.replace("R1","I2")}')
 
 
-def demultiplex(read1, read2, index1, index2, sample_names={}, out_dir="out_dir",mismatch=1,min_reads=10000,subsample_reads=-1):
+
+def demultiplex(read1, read2, index1, index2, sample_names={}, out_dir="out_dir",mismatch=1,min_reads=10000,subsample_reads=-1,revcomp_I2=False):
 	"""demultiplexing guideseq Undetermined fastq
 	
 	Input
@@ -98,6 +111,10 @@ def demultiplex(read1, read2, index1, index2, sample_names={}, out_dir="out_dir"
 
 	start = time.time()
 	for r1,r2,i1,i2 in zip(fq(read1), fq(read2), fq(index1), fq(index2)):
+		i2[1] = i2[1].strip()
+		if revcomp_I2:
+			i2[1] = revcomp(i2[1])
+
 		total_count += 1
 		if total_count % 1000000 == 0:
 			logger.info("Processed %d reads in %.1f minutes.", total_count, (time.time()-start)/60)
@@ -113,7 +130,7 @@ def demultiplex(read1, read2, index1, index2, sample_names={}, out_dir="out_dir"
 			outfiles_r1[sample_id] = open(os.path.join(out_dir, '%s.r1.fastq' % sample_id), 'w')
 			outfiles_r2[sample_id] = open(os.path.join(out_dir, '%s.r2.fastq' % sample_id), 'w')
 		name,barcode = r1[0].strip().split()
-		umi = i2[1].strip()[-10:]+r1[1][:5]+r2[1][:5]
+		umi = i2[1][-10:]+r1[1][:5]+r2[1][:5]
 		# umi = barcode.split("+")[-1][-10:]
 		r1[0] = name+"_"+umi+"\n"
 		name,barcode = r2[0].strip().split()

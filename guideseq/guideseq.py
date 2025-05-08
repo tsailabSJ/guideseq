@@ -10,7 +10,8 @@ guideseq pool
 serves as the wrapper for all guideseq pipeline
 
 """
-
+import glob
+import pandas as pd
 import os
 import sys
 import yaml
@@ -28,6 +29,7 @@ import identifyOfftargetSites
 import validation
 from tabulate import tabulate
 from demultiplex import demultiplex,demultiplex_parallel
+from joblib import Parallel, delayed
 
 DEFAULT_YAML = os.path.dirname(os.path.realpath(__file__)) + "/default.yaml"
 myDate=str(datetime.date.today())
@@ -128,7 +130,7 @@ class GuideSeq:
 						barcode_dict,
 						out_dir=self.parameters['demultiplex']['out_dir'],
 						mismatch=self.parameters['demultiplex']['mismatch'],
-						min_reads=self.parameters['demultiplex']['min_reads'],subsample_reads=self.parameters['demultiplex']['subsample_reads'])
+						min_reads=self.parameters['demultiplex']['min_reads'],subsample_reads=self.parameters['demultiplex']['subsample_reads'],revcomp_I2=self.parameters['demultiplex']['revcomp_I2'])
 			else:
 				demultiplex_parallel(os.path.join(self.parameters['demultiplex']['input_dir'],self.parameters['demultiplex']['forward']),
 						os.path.join(self.parameters['demultiplex']['input_dir'],self.parameters['demultiplex']['reverse']),
@@ -137,7 +139,7 @@ class GuideSeq:
 						barcode_dict,
 						out_dir=self.parameters['demultiplex']['out_dir'],
 						mismatch=self.parameters['demultiplex']['mismatch'],
-						min_reads=self.parameters['demultiplex']['min_reads'],subsample_reads=self.parameters['demultiplex']['subsample_reads'],splitFastq_path=self.parameters['splitFastq'],ncore=self.parameters['njobs'])
+						min_reads=self.parameters['demultiplex']['min_reads'],subsample_reads=self.parameters['demultiplex']['subsample_reads'],splitFastq_path=self.parameters['splitFastq'],ncore=self.parameters['njobs'],revcomp_I2=self.parameters['demultiplex']['revcomp_I2'])
 
 			logger.info('Successfully demultiplexed reads.')
 
@@ -313,6 +315,10 @@ def parse_args():
 	main_parser.add_argument('--step', help='Specify steps, demultiplex, align, identify,visualize, order does not matter', default='demultiplex+align+identify+visualize')
 	main_parser.add_argument('--overwrite', help='overwrite specifications in the yaml file', default=None,type=yaml.load)
 	
+	QC_parser = subparsers.add_parser('qc', help='summerize QC')
+	QC_parser.add_argument('--manifest', '-m', help='Specify the manifest Path', required=True)
+
+	
 	init_parser = subparsers.add_parser('init', help='initialize a default yaml in the current folder')
 
 	return parser.parse_args()
@@ -325,6 +331,62 @@ def main():
 	if args.command == "init":
 		subprocess.call(f"cp {DEFAULT_YAML} Guideseq.yaml",shell=True)
 		print("Guideseq.yaml has been initialize. \nPlease add sample info and then run GUIDE-seq analysis using the 'main' or the 'parallel' subcommand.")
+	elif str(args.command).lower() == "qc":
+		logger.info("Running QC stats")
+		g = GuideSeq()
+		g.parseManifest(args.manifest)
+		output_dir=g.parameters['analysis_folder']+"/QC"
+		if not os.path.exists(output_dir):
+			try:
+				os.makedirs(output_dir)
+				print ("creating folder",output_dir)
+			except:
+				print ("Folder exist")
+		
+		command_list = []
+		# fastqc
+		command_list.append(f"fastqc {os.path.join(g.parameters['demultiplex']['input_dir'],g.parameters['demultiplex']['forward'])} -o {output_dir}")
+		command_list.append(f"fastqc {os.path.join(g.parameters['demultiplex']['input_dir'],g.parameters['demultiplex']['reverse'])} -o {output_dir}")
+		command_list.append(f"fastqc {os.path.join(g.parameters['demultiplex']['input_dir'],g.parameters['demultiplex']['index1'])} -o {output_dir}")
+		command_list.append(f"fastqc {os.path.join(g.parameters['demultiplex']['input_dir'],g.parameters['demultiplex']['index2'])} -o {output_dir}")
+		files = glob.glob(f"{g.parameters['analysis_folder']}/*/*fastq")
+		for f in files:
+			command_list.append(f'fastqc {f} -o {output_dir}')
+		
+		# flagstat
+		files = glob.glob(f"{g.parameters['analysis_folder']}/aligned/*st.bam")+glob.glob(f"{g.parameters['analysis_folder']}/aligned/*dedup.bam")
+		for f in files:
+			command_list.append(f'samtools flagstat {f} > {f}.flagstat')
+		
+		
+		Parallel(n_jobs=g.parameters['njobs'],verbose=10)(delayed(os.system)(command) for command in command_list)
+		#
+		out = []
+		for sample in g.samples:
+			f = os.path.join(g.parameters['analysis_folder'], 'identified', sample + '.matched.final.high_confidence.tsv')
+			if os.path.isfile(f):
+				df = pd.read_csv(f,sep="\t")
+				for s, d in df.groupby("on_target_sequence"):
+					on_target = d[d.editDistance==0]
+					total_reads = d.total_guideseq_reads.sum()
+					on_target_reads = on_target.total_guideseq_reads.sum()
+					N_on_target = on_target.shape[0]
+					N_off_target = d.shape[0]-N_on_target
+					out.append([sample,s,on_target_reads,N_on_target,N_off_target])
+		out = pd.DataFrame(out,columns=['Sample','Target','#Reads_on_target','#N_on_target','#N_off_target'])
+		out.Sample = out.Sample+"_"+out.Target
+		out = out.drop(['Target'],axis=1)
+		outfile=f"{os.path.join(g.parameters['analysis_folder'], 'identified', 'identified.stats_mqc.tsv')}"
+		with open(outfile, 'w') as f:
+			f.write("# plot_type: 'table'\n")
+			f.write("# section_name: 'GUIDE-seq on-target STATS'\n")
+		out.to_csv(outfile,
+				   sep="\t",
+				   index=False,
+				   mode='a',
+				   header=True)  # or header=True if you want column names after the comments
+
+		
 	elif args.command == "main":
 		# run a single sample
 		logger.info("User command: %s"%(" ".join(sys.argv)))

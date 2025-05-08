@@ -81,6 +81,11 @@ def parse_HGNC(f):
 	# print (df.head())
 	return df[symbol].to_dict()
 def get_alignment_info(r):
+	# old version identify has this bug, switchted
+	if "N" in r.target_aligned:
+		tmp = r.target_aligned
+		r.target_aligned = r.query_aligned
+		r.query_aligned = tmp
 	if len(r.target_aligned)==len(r.on_target_sequence):
 		r['seq'] = r.target_aligned
 		r['bulged_seq'] = ""
@@ -89,7 +94,7 @@ def get_alignment_info(r):
 	elif len(r.target_aligned)>len(r.on_target_sequence): # bulge
 		r['seq'] = ""
 		r['bulged_seq'] = r.target_aligned
-		r['target_seq'] = r.on_target_sequence
+		r['target_seq'] = r.query_aligned
 		r['realigned_target_seq'] = r.query_aligned
 	else: # deletion
 		r['seq'] = r.target_aligned

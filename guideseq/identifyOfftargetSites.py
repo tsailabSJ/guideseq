@@ -271,83 +271,100 @@ def identify_sites(ref,nuc_bam,con_bam,nuc_mispriming_bam,con_mispriming_bam,lab
 	# append to merged output
 	command = f"paste {outdir}/{label}.R2.count.tsv {outdir}/{label}.seq1.tsv {outdir}/{label}.seq2.tsv > {outdir}/{label}.raw.tsv"
 	subprocess.call(command, shell=True,stdout=sys.stdout,stderr=sys.stderr)
-
-
-	# split raw.tsv, run about 1 day per 1M data, 10 cores, low mem, high-cpu job
-	logger.info(f'Running speed_up mode' )
-	N=200000
-	command = f"mkdir -p {outdir}/speed_up_{label};split -l {N} {outdir}/{label}.raw.tsv {outdir}/speed_up_{label}/{label}.raw.split_"
-	# print (command)
-	subprocess.call(command, shell=True,stdout=sys.stdout,stderr=sys.stderr)
-	ncore=10
-	current_script_path = os.path.abspath(__file__)
+	
+	
+	# check number of targets, if less than 10, just run in this job
 	python = "/research_jude/rgs01_jude/groups/tsaigrp/projects/Genomics/common/anaconda3/envs/changeseq_py3/bin/python"
 	myDate=str(datetime.date.today())
-	os.system(f"mkdir -p identify_parallel_log_{myDate}")
-	# command = 'bsub -R "rusage[mem=3000] span[hosts=1]" -n 10 -P {{label}} -J {{label}} -q standard -oo identify_parallel_log_{{myDate}}/{{label}}.log -eo identify_parallel_log_{{myDate}}/{{label}}.err {{python}} {{myscript}} {{args}}'
-	command = 'bsub -R "rusage[mem=1000] span[hosts=1]" -n {{ncore}} -P {{label}} -J {{label}} -q standard -oo identify_parallel_log_{{myDate}}/{{label}}.log -eo identify_parallel_log_{{myDate}}/{{label}}.{{label2}}.err {{python}} {{myscript}} {{args}}'
-	myDict={}
-	myDict['python'] = python
-	myDict['ncore'] = ncore
-	myDict['myDate'] = myDate
-	# off_identify.py
-	myDict['label']="off_identify_v3"
-	myscript = current_script_path.replace("identifyOfftargetSites.py",f"{myDict['label']}.py")
-	myDict['myscript']=myscript
-	jobIDs = []
-	files = glob.glob(f"{outdir}/speed_up_{label}/{label}.raw.split_*")
-	for f in files:
-		myDict['args']=f"{f} {ncore} {target}"
-		myDict['label2']=f.split("_")[-1]
-		jobIDs.append(submit_job(multireplace(command,myDict)))
-	monitor_jobs(jobIDs)
-	
-	# merge idenfied
-	merge_command = "{ head -n 1 $(ls %s/speed_up_%s/*.identified.tsv | head -n 1); tail -n +2 -q %s/speed_up_%s/*.identified.tsv; } > %s/%s.identified.raw.tsv"%(outdir,label,outdir,label,outdir,label)
-	os.system(merge_command)
-	# merge unidentified
-	merge_command = "{ head -n 1 $(ls %s/speed_up_%s/*.unidentified.tsv | head -n 1); tail -n +2 -q %s/speed_up_%s/*.unidentified.tsv; } > %s/%s.unidentified.tsv"%(outdir,label,outdir,label,outdir,label)
-	os.system(merge_command)
-	# merge noGUIDEseqReads
-	merge_command = "{ head -n 1 $(ls %s/speed_up_%s/*.noGUIDEseqReads.tsv | head -n 1); tail -n +2 -q %s/speed_up_%s/*.noGUIDEseqReads.tsv; } > %s/%s.noGUIDEseqReads.tsv"%(outdir,label,outdir,label,outdir,label)
-	os.system(merge_command)
-
-	# off_count_merge.py # fast high-mem job
-	ncore=2
 	current_script_path = os.path.abspath(__file__)
-	python = "/research_jude/rgs01_jude/groups/tsaigrp/projects/Genomics/common/anaconda3/envs/changeseq_py3/bin/python"
-	myDate=str(datetime.date.today())
-	os.system(f"mkdir -p identify_parallel_log_{myDate}")
-	command = 'bsub -R "rusage[mem={{mem}}] span[hosts=1]" -n {{ncore}} -P {{label}} -J {{label}} -q standard -oo identify_parallel_log_{{myDate}}/{{label}}.log -eo identify_parallel_log_{{myDate}}/{{label}}.{{label2}}.err {{python}} {{myscript}} {{args}}'
-	myDict={}
-	myDict['python'] = python
-	myDict['myDate'] = myDate
-	myDict['ncore'] = ncore
+	if os.path.isfile(target):
+		target_list = pd.read_csv(target,header=None)[0].tolist()
+	else:
+		target_list=[target]
+	if len(target_list)<5:
+		myscript = current_script_path.replace("identifyOfftargetSites.py","off_identify_v3.py")
+		command = f"{python} {myscript} {outdir}/{label}.raw.tsv 20 {target}"
+		subprocess.call(command, shell=True,stdout=sys.stdout,stderr=sys.stderr)
+	else:
+		# split raw.tsv, run about 1 day per 1M data, 10 cores, low mem, high-cpu job
+		logger.info(f'Running speed_up mode' )
+		N=500000
+		command = f"mkdir -p {outdir}/speed_up_{label};split -l {N} {outdir}/{label}.raw.tsv {outdir}/speed_up_{label}/{label}.raw.split_"
+		# print (command)
+		subprocess.call(command, shell=True,stdout=sys.stdout,stderr=sys.stderr)
+		ncore=10
+		
+		
+		
+		os.system(f"mkdir -p identify_parallel_log_{myDate}")
+		# command = 'bsub -R "rusage[mem=3000] span[hosts=1]" -n 10 -P {{label}} -J {{label}} -q standard -oo identify_parallel_log_{{myDate}}/{{label}}.log -eo identify_parallel_log_{{myDate}}/{{label}}.err {{python}} {{myscript}} {{args}}'
+		command = 'bsub -R "rusage[mem=1000] span[hosts=1]" -n {{ncore}} -P {{label}} -J {{label}} -q standard -oo identify_parallel_log_{{myDate}}/{{label}}.log -eo identify_parallel_log_{{myDate}}/{{label}}.{{label2}}.err {{python}} {{myscript}} {{args}}'
+		myDict={}
+		myDict['python'] = python
+		myDict['ncore'] = ncore
+		myDict['myDate'] = myDate
+		# off_identify.py
+		myDict['label']="off_identify_v3"
+		myscript = current_script_path.replace("identifyOfftargetSites.py",f"{myDict['label']}.py")
+		myDict['myscript']=myscript
+		jobIDs = []
+		files = glob.glob(f"{outdir}/speed_up_{label}/{label}.raw.split_*")
+		for f in files:
+			myDict['args']=f"{f} {ncore} {target}"
+			myDict['label2']=f.split("_")[-1]
+			jobIDs.append(submit_job(multireplace(command,myDict)))
+		monitor_jobs(jobIDs)
 	
-	df = pd.read_csv(f"{outdir}/{label}.identified.raw.tsv",sep="\t")
-	myDict['label']="off_count_merge_v2"
-	myscript = current_script_path.replace("identifyOfftargetSites.py",f"{myDict['label']}.py")
-	myDict['myscript']=myscript
-	jobIDs = []
-	for s,d in df.groupby("#chr"):
-		raw_tsv = f"{outdir}/{label}.{s}.identified.raw.tsv"
-		d.to_csv(raw_tsv,sep="\t",index=False)
-		myDict['args']=f"{outdir}/{label}.{s}.identified.raw.tsv {ncore}"
-		myDict['label2']=s
-		if s in ["chr1","chr2","chr3","chr4","chr5","chr6","chr7","chrX","chr8","chr9","chr11","chr10"]:
-			myDict['mem'] = 60000
-		else:
-			myDict['mem'] = 30000
-		jobIDs.append(submit_job(multireplace(command,myDict)))
-	monitor_jobs(jobIDs)
+	if len(target_list)<5:
+		myscript = current_script_path.replace("identifyOfftargetSites.py","off_count_merge_v2.py")
+		command = f"{python} {myscript} {outdir}/{label}.raw.tsv.identified.tsv 20"
+		subprocess.call(command, shell=True,stdout=sys.stdout,stderr=sys.stderr)
+		get_final_identified(outdir,label)
+	else:
+		# merge idenfied
+		merge_command = "{ head -n 1 $(ls %s/speed_up_%s/*.identified.tsv | head -n 1); tail -n +2 -q %s/speed_up_%s/*.identified.tsv; } > %s/%s.identified.raw.tsv"%(outdir,label,outdir,label,outdir,label)
+		os.system(merge_command)
+		# merge unidentified
+		merge_command = "{ head -n 1 $(ls %s/speed_up_%s/*.unidentified.tsv | head -n 1); tail -n +2 -q %s/speed_up_%s/*.unidentified.tsv; } > %s/%s.unidentified.tsv"%(outdir,label,outdir,label,outdir,label)
+		os.system(merge_command)
+		# merge noGUIDEseqReads
+		merge_command = "{ head -n 1 $(ls %s/speed_up_%s/*.noGUIDEseqReads.tsv | head -n 1); tail -n +2 -q %s/speed_up_%s/*.noGUIDEseqReads.tsv; } > %s/%s.noGUIDEseqReads.tsv"%(outdir,label,outdir,label,outdir,label)
+		os.system(merge_command)
 
+		# off_count_merge.py # fast high-mem job
+		ncore=2
+		os.system(f"mkdir -p identify_parallel_log_{myDate}")
+		command = 'bsub -R "rusage[mem={{mem}}] span[hosts=1]" -n {{ncore}} -P {{label}} -J {{label}} -q standard -oo identify_parallel_log_{{myDate}}/{{label}}.log -eo identify_parallel_log_{{myDate}}/{{label}}.{{label2}}.err {{python}} {{myscript}} {{args}}'
+		myDict={}
+		myDict['python'] = python
+		myDict['myDate'] = myDate
+		myDict['ncore'] = ncore
+		
+		df = pd.read_csv(f"{outdir}/{label}.identified.raw.tsv",sep="\t")
+		myDict['label']="off_count_merge_v2"
+		myscript = current_script_path.replace("identifyOfftargetSites.py",f"{myDict['label']}.py")
+		myDict['myscript']=myscript
+		jobIDs = []
+		for s,d in df.groupby("#chr"):
+			raw_tsv = f"{outdir}/{label}.{s}.identified.raw.tsv"
+			d.to_csv(raw_tsv,sep="\t",index=False)
+			myDict['args']=f"{outdir}/{label}.{s}.identified.raw.tsv {ncore}"
+			myDict['label2']=s
+			if s in ["chr1","chr2","chr3","chr4","chr5","chr6","chr7","chrX","chr8","chr9","chr11","chr10"]:
+				myDict['mem'] = 60000
+			else:
+				myDict['mem'] = 30000
+			jobIDs.append(submit_job(multireplace(command,myDict)))
+		monitor_jobs(jobIDs)
+		get_final_identified(outdir,label)
+		for s,d in df.groupby("#chr"):
+			raw_tsv = f"{outdir}/{label}.{s}.identified.raw.tsv"
+			os.system(f"rm {raw_tsv}")
+			raw_tsv = f"{outdir}/{label}.{s}.identified.final.tsv"
+			os.system(f"rm {raw_tsv}")
 
-	get_final_identified(outdir,label)
-	for s,d in df.groupby("#chr"):
-		raw_tsv = f"{outdir}/{label}.{s}.identified.raw.tsv"
-		os.system(f"rm {raw_tsv}")
-		raw_tsv = f"{outdir}/{label}.{s}.identified.final.tsv"
-		os.system(f"rm {raw_tsv}")
+	
+
 	
 	
 	

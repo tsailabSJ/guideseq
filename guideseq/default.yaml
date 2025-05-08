@@ -50,6 +50,7 @@ demultiplex:
     out_dir: demultiplexed # relative to analysis_folder
     input_dir: ./ # relative to analysis_folder
     subsample_reads: -1 # user might want to subsample reads to the same depth
+    revcomp_I2: FALSE
 
 samples:
     AAVS1_site_2_d30_rep1:

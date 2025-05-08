@@ -63,13 +63,23 @@ def alignReads(bwa=None, samtools=None, # Tools
 	output_UMIdedup_bam_file = f"{output_dir}/{label}.dedup.bam"
 	output_UMIdedup_sam_file = f"{output_dir}/{label}.dedup.sam"
 	
-	# BWA alignment GPU
+	# BWA alignment GPU, 5/1 add MAPQ
 	if bwa=="fq2bam":
-		bwa_alignment_command=f'pbrun fq2bam --ref {reference_genome} --in-fq {input_R1} {input_R2} --gpusort --num-gpus 1 --out-bam {output_sorted_bam_file}'
+		# bwa_alignment_command=f'pbrun fq2bam --ref {reference_genome} --in-fq {input_R1} {input_R2} --gpusort --num-gpus 1 --out-bam {output_sorted_bam_file}'
+		# logger.info("GPU version BWA alignment")
+		# logger.info(bwa_alignment_command)
+		# subprocess.call(bwa_alignment_command,shell=True,stdout=sys.stdout,stderr=sys.stderr)
+		bwa_alignment_command=f'pbrun fq2bam --ref {reference_genome} --in-fq {input_R1} {input_R2} --gpusort --num-gpus 1 --out-bam {output_bam_file}'
 		logger.info("GPU version BWA alignment")
 		logger.info(bwa_alignment_command)
 		subprocess.call(bwa_alignment_command,shell=True,stdout=sys.stdout,stderr=sys.stderr)
-		
+		samtools_sort_command = f'{samtools} view -h -b -q {mapq_threshold} {output_bam_file} > {output_sorted_bam_file}'
+		samtools_index_command = f"{samtools} index {output_sorted_bam_file}"
+		logger.info('samtools applying MAPQ threshold')
+		logger.info(samtools_sort_command)
+		logger.info(samtools_index_command)
+		subprocess.call(samtools_sort_command, shell=True,stdout=sys.stdout,stderr=sys.stderr)
+		subprocess.call(samtools_index_command, shell=True,stdout=sys.stdout,stderr=sys.stderr)
 		
 	else:
 		# BWA alignment dsODN reads
@@ -106,12 +116,17 @@ def alignReads(bwa=None, samtools=None, # Tools
 
 	# BWA alignment GPU
 	if bwa=="fq2bam":
-		bwa_alignment_command=f'pbrun fq2bam --ref {reference_genome} --in-fq {input_R1} {input_R2} --gpusort --num-gpus 1 --out-bam {output_sorted_bam_file}'
-		# bwa_alignment_command=f'pbrun fq2bam --ref {reference_genome} --in-fq {input_R1} {input_R2} --gpusort --num-gpus 1 --out-bam {output_sorted_bam_file}  --out-duplicate-metrics {output_sorted_bam_file}.qc --out-qc-metrics-dir {output_dir}'
+		bwa_alignment_command=f'pbrun fq2bam --ref {reference_genome} --in-fq {input_R1} {input_R2} --gpusort --num-gpus 1 --out-bam {output_bam_file}'
 		logger.info("GPU version BWA alignment")
 		logger.info(bwa_alignment_command)
 		subprocess.call(bwa_alignment_command,shell=True,stdout=sys.stdout,stderr=sys.stderr)
-		
+		samtools_sort_command = f'{samtools} view -h -b -q {mapq_threshold} {output_bam_file} > {output_sorted_bam_file}'
+		samtools_index_command = f"{samtools} index {output_sorted_bam_file}"
+		logger.info('samtools applying MAPQ threshold')
+		logger.info(samtools_sort_command)
+		logger.info(samtools_index_command)
+		subprocess.call(samtools_sort_command, shell=True,stdout=sys.stdout,stderr=sys.stderr)
+		subprocess.call(samtools_index_command, shell=True,stdout=sys.stdout,stderr=sys.stderr)
 	else:
 		# BWA alignment dsODN reads
 		opts = f"-t {njobs}"

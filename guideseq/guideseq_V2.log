@@ -1,0 +1,27 @@
+[08/01 06:46:41PM][INFO][guideseq] User command: guideseq.py main -m ../test/test_manifest.yaml --step demultiplex+align+identify
+[08/01 06:46:41PM][INFO][guideseq] Loading manifest...
+[08/01 06:46:41PM][ERROR][guideseq] Incorrect or malformed manifest file. Please ensure your manifest contains all required fields.
+[08/01 06:46:41PM][ERROR][guideseq] Traceback (most recent call last):
+  File "/Users/timbarry/research_code/guideseq/guideseq/guideseq.py", line 110, in parseManifest
+    manifest_data = get_parameters(manifest_path)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/timbarry/research_code/guideseq/guideseq/guideseq.py", line 39, in get_parameters
+    default = yaml.load(f)
+              ^^^^^^^^^^^^
+TypeError: load() missing 1 required positional argument: 'Loader'
+
+[08/01 06:50:43PM][INFO][guideseq] User command: guideseq.py main -m ../test/test_manifest.yaml --step demultiplex+align+identify
+[08/01 06:50:43PM][INFO][guideseq] Loading manifest...
+[08/01 06:50:43PM][ERROR][guideseq] Incorrect or malformed manifest file. Please ensure your manifest contains all required fields.
+[08/01 06:50:43PM][ERROR][guideseq] Traceback (most recent call last):
+  File "/Users/timbarry/research_code/guideseq/guideseq/guideseq.py", line 110, in parseManifest
+    manifest_data = get_parameters(manifest_path)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/timbarry/research_code/guideseq/guideseq/guideseq.py", line 39, in get_parameters
+    default = yaml.load(f)
+              ^^^^^^^^^^^^
+TypeError: load() missing 1 required positional argument: 'Loader'
+
+[08/01 06:55:32PM][INFO][guideseq] User command: guideseq.py main -m ../test/test_manifest.yaml --step demultiplex+align+identify
+[08/01 06:55:32PM][INFO][guideseq] Loading manifest...
+[08/01 06:55:32PM][ERROR][validation] /Users/timbarry/research_code/guideseq/guideseq/chr19.fa does not exist

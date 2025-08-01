@@ -1,0 +1,1 @@
+python3 ../guideseq/guideseq.py main -m ../test/test_manifest.yaml --step demultiplex+align+identify

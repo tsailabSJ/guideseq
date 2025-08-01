@@ -322,3 +322,171 @@ Traceback (most recent call last):
 ValueError: Columns must be same length as key
 
 [07/31 02:31:25PM][INFO][guideseq] Finished visualizing off-target sites
+[08/01 06:55:58PM][INFO][guideseq] User command: ../guideseq/guideseq.py main -m ../test/test_manifest.yaml --step demultiplex+align+identify
+[08/01 06:55:58PM][INFO][guideseq] Loading manifest...
+[08/01 06:55:58PM][INFO][guideseq] 
+-----------------------------  ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+reference_genome               chr19.fa
+blacklist                      hg38-blacklist.v2.bed.gz
+genome                         hg38
+PAM                            NGG
+analysis_folder                ./
+bwa                            bwa
+samtools                       samtools
+bedtools                       bedtools
+umi_tools                      umi_tools
+Rscript                        Rscript
+window_size                    25
+max_score                      7
+mapq_threshold                 50
+demultiplex                    {'min_reads': 1, 'mismatch': 1, 'forward': 'test_fastq_R1_001.fastq', 'reverse': 'test_fastq_R2_001.fastq', 'index1': 'test_fastq_I1_001.fastq', 'index2': 'test_fastq_I2_001.fastq', 'out_dir': './demultiplexed', 'input_dir': '././', 'subsample_reads': -1}
+trim_galore                    trim_galore
+cutadapt                       cutadapt
+on_target_reference_sequence   GTCCCTAGTGGCCCCACTGTAGG
+save_pickle                    True
+CONSOLIDATE_MIN_QUAL           15
+CONSOLIDATE_MIN_FREQ           0.9
+njobs                          12
+i7+                            ATACCGTTATTAACATATGACA
+i7-                            GTTTAATTGAGTTGTCATATGTTAATAAC
+dsODN_primer                   GTTTAATTGAGTTGTCATATGTTAATAACGGTAT
+dsODN_primer_revcomp           ATACCGTTATTAACATATGACAACTCAATTAAAC
+control_primer_coord           chr2:99357763-99357801
+control_primer                 AGATGCCTTTGGGGATACTCC
+i7+_match_distance             2
+i7-_match_distance             3
+control_primer_match_distance  2
+i7+_mispriming_distance        3
+i7-_mispriming_distance        2
+i7+_mispriming_length          12
+i7-_mispriming_length          5
+refseq_names                   /Users/timbarry/research_code/guideseq/guideseq/refseq_gene_name.py
+Manhattan.R                    /Users/timbarry/research_code/guideseq/guideseq/Manhattan.R
+control_coord_chr              chr2
+control_coord_start            99357763
+control_coord_end              99357801
+-----------------------------  ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+[08/01 06:55:58PM][INFO][guideseq] 
+---------------  -------------------------
+target           GGGGCCACTAGGGACAGGATNGG
+barcode1         CCTGAGGA
+barcode2         GTAAGGAG
+controlbarcode1  GGGGGGGG
+controlbarcode2  CGGCGACC
+description      AAVS1_site_14_description
+---------------  -------------------------
+[08/01 06:55:58PM][INFO][guideseq] Demultiplexing Undetermined files...
+[08/01 06:55:58PM][INFO][demultiplex] Wrote FASTQs for the 2 sample barcodes out of 2 with at least 1 reads.
+[08/01 06:55:58PM][INFO][guideseq] Successfully demultiplexed reads.
+[08/01 06:55:58PM][INFO][guideseq] Aligning reads and collapsing reads based on UMI...
+[08/01 06:55:58PM][INFO][alignReads] Genome index files not detected. Running BWA to generate indices.
+[08/01 06:55:58PM][INFO][alignReads] Running bwa command: bwa index chr19.fa
+[08/01 06:56:18PM][INFO][alignReads] BWA genome index generated
+[08/01 06:56:18PM][INFO][alignReads] Running paired end mapping for AAVS1_site_14
+[08/01 06:56:18PM][INFO][alignReads] bwa mem -t 12 chr19.fa ./demultiplexed/AAVS1_site_14.r1.fastq ./demultiplexed/AAVS1_site_14.r2.fastq > ./aligned/AAVS1_site_14.sam
+[08/01 06:56:18PM][INFO][alignReads] samtools view -bS ./aligned/AAVS1_site_14.sam > ./aligned/AAVS1_site_14.bam;samtools sort -o ./aligned/AAVS1_site_14.st.bam ./aligned/AAVS1_site_14.bam;samtools index ./aligned/AAVS1_site_14.st.bam
+[08/01 06:56:19PM][INFO][alignReads] umi_tools dedup --method unique --stdin=./aligned/AAVS1_site_14.st.bam --log=./aligned/AAVS1_site_14.dedup.log --paired > ./aligned/AAVS1_site_14.dedup.bam;samtools index ./aligned/AAVS1_site_14.dedup.bam;samtools view ./aligned/AAVS1_site_14.dedup.bam > ./aligned/AAVS1_site_14.dedup.sam
+[08/01 06:56:19PM][INFO][alignReads] Paired end mapping for AAVS1_site_14 completed.
+[08/01 06:56:19PM][INFO][alignReads] BWA genome index found.
+[08/01 06:56:19PM][INFO][alignReads] Running paired end mapping for Control_AAVS1_site_14
+[08/01 06:56:19PM][INFO][alignReads] bwa mem -t 12 chr19.fa ./demultiplexed/Control_AAVS1_site_14.r1.fastq ./demultiplexed/Control_AAVS1_site_14.r2.fastq > ./aligned/Control_AAVS1_site_14.sam
+[08/01 06:56:19PM][INFO][alignReads] samtools view -bS ./aligned/Control_AAVS1_site_14.sam > ./aligned/Control_AAVS1_site_14.bam;samtools sort -o ./aligned/Control_AAVS1_site_14.st.bam ./aligned/Control_AAVS1_site_14.bam;samtools index ./aligned/Control_AAVS1_site_14.st.bam
+[08/01 06:56:19PM][INFO][alignReads] umi_tools dedup --method unique --stdin=./aligned/Control_AAVS1_site_14.st.bam --log=./aligned/Control_AAVS1_site_14.dedup.log --paired > ./aligned/Control_AAVS1_site_14.dedup.bam;samtools index ./aligned/Control_AAVS1_site_14.dedup.bam;samtools view ./aligned/Control_AAVS1_site_14.dedup.bam > ./aligned/Control_AAVS1_site_14.dedup.sam
+[08/01 06:56:19PM][INFO][alignReads] Paired end mapping for Control_AAVS1_site_14 completed.
+[08/01 06:56:19PM][INFO][guideseq] Finished aligning reads to genome.
+[08/01 06:56:19PM][INFO][guideseq] Identifying offtarget sites...
+[08/01 06:56:19PM][INFO][identifyOfftargetSites] Processing SAM file ./aligned/AAVS1_site_14.dedup.sam
+[08/01 06:56:19PM][ERROR][guideseq] Failed for sample AAVS1_site_14
+[08/01 06:56:19PM][ERROR][guideseq] Traceback (most recent call last):
+  File "/Users/timbarry/research_code/guideseq/test/../guideseq/guideseq.py", line 329, in identifyOfftargetSites
+    identifyOfftargetSites.analyze(self.samples[sample]['aligned'], self.parameters['reference_genome'], self.identified[sample], annotations,
+  File "/Users/timbarry/research_code/guideseq/guideseq/identifyOfftargetSites.py", line 351, in analyze
+    file = open(sam_filename, 'rU')
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+ValueError: invalid mode: 'rU'
+
+[08/01 06:56:19PM][INFO][guideseq] Finished identifying offtarget sites.
+[08/01 06:56:19PM][INFO][guideseq] Filtering background sites
+[08/01 06:56:19PM][ERROR][guideseq] Error filtering background sites: Control_AAVS1_site_14
+[08/01 06:56:19PM][ERROR][guideseq] Traceback (most recent call last):
+  File "/Users/timbarry/research_code/guideseq/test/../guideseq/guideseq.py", line 360, in filterBackgroundSites
+    filterBlackList(self.parameters['bedtools'], self.identified[sample], self.parameters['blacklist'], out)
+                                                 ~~~~~~~~~~~~~~~^^^^^^^^
+KeyError: 'Control_AAVS1_site_14'
+
+[08/01 06:57:11PM][INFO][guideseq] User command: ../guideseq/guideseq.py main -m ../test/test_manifest.yaml --step demultiplex+align+identify
+[08/01 06:57:11PM][INFO][guideseq] Loading manifest...
+[08/01 06:57:11PM][INFO][guideseq] 
+-----------------------------  ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+reference_genome               chr19.fa
+blacklist                      hg38-blacklist.v2.bed.gz
+genome                         hg38
+PAM                            NGG
+analysis_folder                ./
+bwa                            bwa
+samtools                       samtools
+bedtools                       bedtools
+umi_tools                      umi_tools
+Rscript                        Rscript
+window_size                    25
+max_score                      7
+mapq_threshold                 50
+demultiplex                    {'min_reads': 1, 'mismatch': 1, 'forward': 'test_fastq_R1_001.fastq', 'reverse': 'test_fastq_R2_001.fastq', 'index1': 'test_fastq_I1_001.fastq', 'index2': 'test_fastq_I2_001.fastq', 'out_dir': './demultiplexed', 'input_dir': '././', 'subsample_reads': -1}
+trim_galore                    trim_galore
+cutadapt                       cutadapt
+on_target_reference_sequence   GTCCCTAGTGGCCCCACTGTAGG
+save_pickle                    True
+CONSOLIDATE_MIN_QUAL           15
+CONSOLIDATE_MIN_FREQ           0.9
+njobs                          12
+i7+                            ATACCGTTATTAACATATGACA
+i7-                            GTTTAATTGAGTTGTCATATGTTAATAAC
+dsODN_primer                   GTTTAATTGAGTTGTCATATGTTAATAACGGTAT
+dsODN_primer_revcomp           ATACCGTTATTAACATATGACAACTCAATTAAAC
+control_primer_coord           chr2:99357763-99357801
+control_primer                 AGATGCCTTTGGGGATACTCC
+i7+_match_distance             2
+i7-_match_distance             3
+control_primer_match_distance  2
+i7+_mispriming_distance        3
+i7-_mispriming_distance        2
+i7+_mispriming_length          12
+i7-_mispriming_length          5
+refseq_names                   /Users/timbarry/research_code/guideseq/guideseq/refseq_gene_name.py
+Manhattan.R                    /Users/timbarry/research_code/guideseq/guideseq/Manhattan.R
+control_coord_chr              chr2
+control_coord_start            99357763
+control_coord_end              99357801
+-----------------------------  ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+[08/01 06:57:11PM][INFO][guideseq] 
+---------------  -------------------------
+target           GGGGCCACTAGGGACAGGATNGG
+barcode1         CCTGAGGA
+barcode2         GTAAGGAG
+controlbarcode1  GGGGGGGG
+controlbarcode2  CGGCGACC
+description      AAVS1_site_14_description
+---------------  -------------------------
+[08/01 06:57:11PM][INFO][guideseq] Demultiplexing Undetermined files...
+[08/01 06:57:11PM][INFO][demultiplex] Wrote FASTQs for the 2 sample barcodes out of 2 with at least 1 reads.
+[08/01 06:57:11PM][INFO][guideseq] Successfully demultiplexed reads.
+[08/01 06:57:11PM][INFO][guideseq] Aligning reads and collapsing reads based on UMI...
+[08/01 06:57:11PM][INFO][alignReads] BWA genome index found.
+[08/01 06:57:11PM][INFO][alignReads] Running paired end mapping for AAVS1_site_14
+[08/01 06:57:11PM][INFO][alignReads] bwa mem -t 12 chr19.fa ./demultiplexed/AAVS1_site_14.r1.fastq ./demultiplexed/AAVS1_site_14.r2.fastq > ./aligned/AAVS1_site_14.sam
+[08/01 06:57:11PM][INFO][alignReads] samtools view -bS ./aligned/AAVS1_site_14.sam > ./aligned/AAVS1_site_14.bam;samtools sort -o ./aligned/AAVS1_site_14.st.bam ./aligned/AAVS1_site_14.bam;samtools index ./aligned/AAVS1_site_14.st.bam
+[08/01 06:57:12PM][INFO][alignReads] umi_tools dedup --method unique --stdin=./aligned/AAVS1_site_14.st.bam --log=./aligned/AAVS1_site_14.dedup.log --paired > ./aligned/AAVS1_site_14.dedup.bam;samtools index ./aligned/AAVS1_site_14.dedup.bam;samtools view ./aligned/AAVS1_site_14.dedup.bam > ./aligned/AAVS1_site_14.dedup.sam
+[08/01 06:57:12PM][INFO][alignReads] Paired end mapping for AAVS1_site_14 completed.
+[08/01 06:57:12PM][INFO][alignReads] BWA genome index found.
+[08/01 06:57:12PM][INFO][alignReads] Running paired end mapping for Control_AAVS1_site_14
+[08/01 06:57:12PM][INFO][alignReads] bwa mem -t 12 chr19.fa ./demultiplexed/Control_AAVS1_site_14.r1.fastq ./demultiplexed/Control_AAVS1_site_14.r2.fastq > ./aligned/Control_AAVS1_site_14.sam
+[08/01 06:57:12PM][INFO][alignReads] samtools view -bS ./aligned/Control_AAVS1_site_14.sam > ./aligned/Control_AAVS1_site_14.bam;samtools sort -o ./aligned/Control_AAVS1_site_14.st.bam ./aligned/Control_AAVS1_site_14.bam;samtools index ./aligned/Control_AAVS1_site_14.st.bam
+[08/01 06:57:12PM][INFO][alignReads] umi_tools dedup --method unique --stdin=./aligned/Control_AAVS1_site_14.st.bam --log=./aligned/Control_AAVS1_site_14.dedup.log --paired > ./aligned/Control_AAVS1_site_14.dedup.bam;samtools index ./aligned/Control_AAVS1_site_14.dedup.bam;samtools view ./aligned/Control_AAVS1_site_14.dedup.bam > ./aligned/Control_AAVS1_site_14.dedup.sam
+[08/01 06:57:12PM][INFO][alignReads] Paired end mapping for Control_AAVS1_site_14 completed.
+[08/01 06:57:12PM][INFO][guideseq] Finished aligning reads to genome.
+[08/01 06:57:12PM][INFO][guideseq] Identifying offtarget sites...
+[08/01 06:57:12PM][INFO][identifyOfftargetSites] Processing SAM file ./aligned/AAVS1_site_14.dedup.sam
+[08/01 06:57:12PM][INFO][identifyOfftargetSites] Processing SAM file ./aligned/Control_AAVS1_site_14.dedup.sam
+[08/01 06:57:12PM][INFO][guideseq] Finished identifying offtarget sites.
+[08/01 06:57:12PM][INFO][guideseq] Filtering background sites
+[08/01 06:57:12PM][INFO][guideseq] Finished background filtering for AAVS1_site_14 sample

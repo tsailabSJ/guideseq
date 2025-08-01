@@ -348,7 +348,7 @@ def analyze(sam_filename, reference_genome, outfile, annotations, windowsize, ma
 	temp = open(outfile+".primer.tsv", 'w')
 	tl_filter = open(outfile+".tl_filter.tsv", 'w')
 	logger.info("Processing SAM file %s", sam_filename)
-	file = open(sam_filename, 'rU')
+	file = open(sam_filename, 'r')
 	__, filename_tail = os.path.split(sam_filename)
 	chromosome_position = chromosomePosition(reference_genome)
 	# control_primer_obj = chromosomePosition(reference_genome)

@@ -36,9 +36,9 @@ def get_parameters(manifest_data):
 	# init
 	default_refseqName = os.path.dirname(os.path.realpath(__file__)) + "/refseq_gene_name.py"
 	with open(DEFAULT_YAML, 'r') as f:
-		default = yaml.load(f)
+		default = yaml.safe_load(f)
 	with open(manifest_data, 'r') as f:
-		return_dict = yaml.load(f) # this is user input YAML
+		return_dict = yaml.safe_load(f) # this is user input YAML
 	default['analysis_folder'] = os.getcwd()
 	default['refseq_names'] = default_refseqName
 	default['Manhattan.R'] = os.path.dirname(os.path.realpath(__file__)) + "/Manhattan.R"
